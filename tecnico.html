@@ -288,7 +288,8 @@ const FAMILY_FIELDS = {
   "Compresores": {
     key: "temp_elemento", keyLabel: "Temp. salida elemento (prom.)", keyUnit: "°C",
     fields: [
-      { key: "nivel_aceite", label: "Nivel de aceite", tipo: "numerico", unidad: "%", min: 50, max: 75,
+      { key: "nivel_aceite", label: "Nivel de aceite", tipo: "select",
+        opciones: ["Óptimo","Medio","Bajo"], opcionProblema: "Bajo", detalleLabel: "Observación adicional",
         riesgo: "Falta de lubricación y refrigeración, elevación drástica de temperatura, daño en rodamientos." },
       { key: "fugas_aceite", label: "Fugas de aceite / conexiones", tipo: "select",
         opciones: ["Sin fugas","Con fuga"], opcionProblema: "Con fuga", detalleLabel: "¿Dónde está la fuga?",
@@ -298,7 +299,7 @@ const FAMILY_FIELDS = {
         riesgo: null },
       { key: "temp_elemento", label: "Temperatura salida del elemento", tipo: "numerico", unidad: "°C", min: 75, max: 95,
         riesgo: "Degradación prematura del aceite, barniz en tornillos, riesgo de atascamiento mecánico." },
-      { key: "presion_linea", label: "Presión de línea / salida", tipo: "numerico", unidad: "PSI", min: 95, max: 95,
+      { key: "presion_linea", label: "Presión de Red", tipo: "numerico", unidad: "PSI", min: 95, max: 95,
         riesgo: null },
       { key: "presion_tanque", label: "Presión del tanque separador", tipo: "numerico", unidad: "bar", min: 7.5, max: 9.0,
         riesgo: "Apertura de válvula de seguridad, sobrecarga en motor eléctrico." },
@@ -316,22 +317,38 @@ const FAMILY_FIELDS = {
     ]
   },
   "Torres de Enfriamiento": {
-    key: "conductividad_agua", keyLabel: "Conductividad de agua (prom.)", keyUnit: "µS/cm",
+    key: "velocidad_frecuencia", keyLabel: "Velocidad de frecuencia (prom.)", keyUnit: "Hz",
     fields: [
-      { key: "conductividad_agua", label: "Conductividad de agua", synonyms: ["mediciondeconductividaddeagua","conductividaddeagua"] }
+      { key: "velocidad_frecuencia", label: "Velocidad de frecuencia de motores", tipo: "numerico", unidad: "Hz", min: 55, max: 60,
+        riesgo: null },
+      { key: "conductividad", label: "Conductividad", tipo: "numerico", unidad: "RPM", min: 2500, max: 3500,
+        riesgo: null },
+      { key: "dureza", label: "Dureza", tipo: "select",
+        opciones: ["Baja","Alta"], opcionProblema: "Alta", detalleLabel: "Observación adicional",
+        riesgo: null },
+      { key: "purga_agua", label: "Purga de agua", tipo: "select",
+        opciones: ["Se ejecutó","No se ejecutó"], opcionProblema: "No se ejecutó", detalleLabel: "Observación adicional",
+        riesgo: null }
     ]
   },
   "Compactos": {
-    key: "temperatura_tablero", keyLabel: "Temp. de tablero (prom.)", keyUnit: "°C",
+    key: "flujo_aire_caliente", keyLabel: "Flujo descarga aire caliente (prom.)", keyUnit: "°C",
     fields: [
-      { key: "temperatura_tablero", label: "Temperatura de tablero", synonyms: ["temperaturarangocorrectoentre28y35","temperaturatablero"] },
-      { key: "filtro_aire", label: "Estado filtro de aire", synonyms: ["inspecciondeestadodefiltrodeaire","filtrodeaire"] }
+      { key: "flujo_aire_caliente", label: "Flujo de descarga de aire caliente", tipo: "numerico", unidad: "°C", min: 35, max: 38,
+        riesgo: null }
     ]
   },
   "UMA's": {
-    key: "amperaje_motor", keyLabel: "Amperaje de motor (prom.)", keyUnit: "A",
+    key: "temp_agua_entrada", keyLabel: "Temp. agua entrada (prom.)", keyUnit: "°C",
     fields: [
-      { key: "amperaje_motor", label: "Amperaje de motor", synonyms: ["temperajedemotor24correcta","amperajedemotor"] }
+      { key: "temp_agua_entrada", label: "Temperatura de agua entrada", tipo: "numerico", unidad: "°C", min: 12, max: 14,
+        riesgo: null },
+      { key: "temp_agua_salida", label: "Temperatura de agua salida", tipo: "numerico", unidad: "°C", min: 20, max: 22,
+        riesgo: null },
+      { key: "amperaje", label: "Amperaje", tipo: "numerico", unidad: "A", min: null, max: null,
+        riesgo: null },
+      { key: "presion_caudal", label: "Presión de caudal de agua", tipo: "numerico", unidad: "PSI", min: 25, max: 30,
+        riesgo: null }
     ]
   }
 };
@@ -990,28 +1007,7 @@ function renderEquipo(app, tag){
   `;
   app.appendChild(top);
 
-  const u = ultimaInspeccion(tag);
   const cfg = familyFieldConfig(act.familia);
-  if(u){
-    const lecturaPanel = el('div','panel');
-    const rOk = esResultadoOk(u.resultado_check);
-    let extraHtml = '';
-    (cfg.fields||[]).forEach(f=>{
-      const v = u.datos_adicionales ? u.datos_adicionales[f.key] : null;
-      if(v!=null && v!==''){
-        extraHtml += `<div class="field-row"><div class="k">${f.label}</div><div class="v">${v}</div></div>`;
-      }
-    });
-    lecturaPanel.innerHTML = `<h3>Última lectura — ${fmtDate(isoDateInput(u.fecha_inspeccion_d))}</h3>
-      <div class="field-row"><div class="k">Resultado</div><div class="v"><span class="dias-pill ${rOk===false?'bad':(rOk===true?'good':'warn')}">${rOk===false?'ALERTA':(rOk===true?'OK':'Sin dato')}</span></div></div>
-      <div class="field-row"><div class="k">Estado operativo</div><div class="v">${u.estado_operativo||'—'}</div></div>
-      <div class="field-row"><div class="k">Modo de funcionamiento</div><div class="v">${u.modo_funcionamiento||'—'}</div></div>
-      ${u.pct_operatividad!=null? `<div class="field-row"><div class="k">% de operatividad</div><div class="v">${fmtPct(u.pct_operatividad)}</div></div>`:''}
-      ${extraHtml}
-      ${u.observacion? `<div class="field-row"><div class="k">Observación</div><div class="v">${u.observacion}</div></div>`:''}
-    `;
-    app.appendChild(lecturaPanel);
-  }
 
   const tlPanel = el('div','panel');
   tlPanel.innerHTML = '<h3>Trazabilidad — más reciente primero</h3>';
@@ -1038,16 +1034,51 @@ function renderEquipo(app, tag){
   const insEq = ST.inspecciones.filter(i=>i.tag===tag).slice().sort((a,b)=>b.fecha_inspeccion_d-a.fecha_inspeccion_d);
   if(insEq.length){
     const insPanel = el('div','panel');
-    insPanel.innerHTML = '<h3>Historial de rondas de inspección</h3>';
+    insPanel.innerHTML = '<h3>Historial de rondas de inspección</h3><p style="font-size:12px;color:var(--text-low);margin:-6px 0 10px">Click en una fila para ver el detalle</p>';
     const table = el('table','obs-table');
-    table.innerHTML = '<thead><tr><th>Fecha</th><th>Estado operativo</th><th>Modo</th><th>% Operatividad</th><th>Resultado</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Fecha</th><th>Hora</th><th>Estado operativo</th><th>Modo</th><th>% Operatividad</th><th>Resultado</th></tr></thead>';
     const tbody = el('tbody');
-    insEq.forEach(i=>{
+    let filaAbierta = null;
+    insEq.forEach((i,idx)=>{
       const rOk = esResultadoOk(i.resultado_check);
-      const tr = el('tr');
-      tr.innerHTML = `<td>${fmtDate(isoDateInput(i.fecha_inspeccion_d))}</td><td>${i.estado_operativo||'—'}</td><td>${i.modo_funcionamiento||'—'}</td>
+      const horaTxt = i.created_at ? new Date(i.created_at).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}) : '—';
+      const tr = el('tr','rowlink');
+      tr.innerHTML = `<td>${fmtDate(isoDateInput(i.fecha_inspeccion_d))}</td><td>${horaTxt}</td><td>${i.estado_operativo||'—'}</td><td>${i.modo_funcionamiento||'—'}</td>
         <td>${i.pct_operatividad!=null?fmtPct(i.pct_operatividad):'—'}</td><td><span class="dias-pill ${rOk===false?'bad':(rOk===true?'good':'warn')}">${rOk===false?'ALERTA':(rOk===true?'OK':'Sin dato')}</span></td>`;
+
+      const trDetalle = el('tr');
+      trDetalle.className = 'hidden';
+      const tdDetalle = el('td');
+      tdDetalle.colSpan = 6;
+      tdDetalle.style.cssText = 'background:var(--bg-page);padding:14px 16px';
+      let camposHtml = '';
+      (cfg.fields||[]).forEach(f=>{
+        const v = i.datos_adicionales ? i.datos_adicionales[f.key] : null;
+        if(v==null || v==='') return;
+        const detalle = i.datos_adicionales ? i.datos_adicionales[f.key+'_detalle'] : null;
+        const ev = evaluarCampo(f, v);
+        const fuera = ev && ev.fuera;
+        const colorEstilo = fuera ? 'color:var(--bad);font-weight:700' : '';
+        camposHtml += `<div class="field-row"><div class="k">${f.label}</div><div class="v" style="${colorEstilo}">${v}${detalle?' ('+detalle+')':''}${fuera?' ⚠':''}</div></div>`;
+        if(fuera && ev.riesgo){
+          camposHtml += `<div style="font-size:11.5px;color:var(--bad);margin:-4px 0 6px 4px">Riesgo: ${ev.riesgo}</div>`;
+        }
+      });
+      tdDetalle.innerHTML = `
+        ${i.observacion? `<div class="field-row"><div class="k">Observación</div><div class="v">${i.observacion}</div></div>`:''}
+        ${camposHtml || '<div style="font-size:12px;color:var(--text-low)">Sin parámetros adicionales registrados.</div>'}
+      `;
+      trDetalle.appendChild(tdDetalle);
+
+      tr.onclick = ()=>{
+        const yaAbierta = trDetalle.className !== 'hidden';
+        if(filaAbierta && filaAbierta !== trDetalle) filaAbierta.className = 'hidden';
+        trDetalle.className = yaAbierta ? 'hidden' : '';
+        filaAbierta = yaAbierta ? null : trDetalle;
+      };
+
       tbody.appendChild(tr);
+      tbody.appendChild(trDetalle);
     });
     table.appendChild(tbody);
     insPanel.appendChild(table);
@@ -2505,6 +2536,7 @@ const TECNICOS_AUTORIZADOS = [
 function evaluarCampo(f, valor){
   if(!valor) return null;
   if(f.tipo==='numerico'){
+    if(f.min==null || f.max==null) return { fuera:false };
     const n = Number(valor);
     if(isNaN(n)) return null;
     if(n < f.min || n > f.max){
@@ -2546,7 +2578,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
   const camposEspecificos = cfg.fields.map(f=>{
     const valPrev = vpCampos[f.key]!=null ? String(vpCampos[f.key]) : '';
     if(f.tipo==='numerico'){
-      const rangoTxt = f.min===f.max ? ('exactamente '+f.min) : (f.min+'–'+f.max);
+      const rangoTxt = (f.min==null||f.max==null) ? 'por definir' : (f.min===f.max ? ('exactamente '+f.min) : (f.min+'–'+f.max));
       return `<div class="full">
         <label>${f.label} (${f.unidad}) — normal: ${rangoTxt}</label>
         <input id="campo_${f.key}" type="number" step="any" value="${valPrev.replace(/"/g,'&quot;')}">
