@@ -875,6 +875,125 @@ function renderPanelDia(app, fam){
   app.appendChild(panel);
 }
 
+function inicioSemana(d){
+  const dia = d.getDay();
+  const offset = dia===0 ? 6 : dia-1;
+  const lunes = new Date(d.getFullYear(), d.getMonth(), d.getDate()-offset);
+  return lunes;
+}
+
+function renderPanelSemana(app, fam){
+  const eq = equiposCriticos().filter(a=>a.familia===fam);
+  if(!eq.length) return;
+  const tagsFam = new Set(eq.map(a=>a.tag));
+  const hoy = todayLocal();
+  const lunes = inicioSemana(hoy);
+  const lunesStr = isoDateInput(lunes);
+  const hoyStr = isoDateInput(hoy);
+
+  const inspSemana = ST.inspecciones.filter(i=>tagsFam.has(i.tag) && i.fecha_inspeccion_d && isoDateInput(i.fecha_inspeccion_d)>=lunesStr && isoDateInput(i.fecha_inspeccion_d)<=hoyStr);
+  const alertasSemana = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.fecha_deteccion && isoDateInput(new Date(a.fecha_deteccion))>=lunesStr && isoDateInput(new Date(a.fecha_deteccion))<=hoyStr);
+
+  // 1. Consistencia de inspeccion
+  const diasPorEquipo = {};
+  eq.forEach(a=>diasPorEquipo[a.tag] = new Set());
+  inspSemana.forEach(i=>{ if(diasPorEquipo[i.tag]) diasPorEquipo[i.tag].add(isoDateInput(i.fecha_inspeccion_d)); });
+  const diasTranscurridos = Math.min(7, daysBetween(lunes, hoy)+1);
+  const equiposConsistentes = eq.filter(a=>diasPorEquipo[a.tag].size >= diasTranscurridos).length;
+
+  // 2. Parametro que mas falla
+  const porParametro = {};
+  alertasSemana.forEach(a=>{
+    if(!porParametro[a.parametro_label]) porParametro[a.parametro_label] = {label:a.parametro_label, n:0, tags:new Set()};
+    porParametro[a.parametro_label].n++;
+    porParametro[a.parametro_label].tags.add(a.tag);
+  });
+  const rankingParametros = Object.values(porParametro).sort((x,y)=>y.n-x.n);
+
+  // 3. Alertas abiertas 2+ dias (sin importar cuando se detectaron, siempre y cuando sigan pendientes hoy)
+  const alertasAbiertasFam = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.estado==='Pendiente');
+  const alertasViejas = alertasAbiertasFam.map(a=>({...a, diasAbierta: daysBetween(new Date(a.fecha_deteccion), hoy)})).filter(a=>a.diasAbierta>=2).sort((x,y)=>y.diasAbierta-x.diasAbierta);
+
+  // 4. Tiempo promedio de resolucion, cerradas esta semana
+  const cerradasSemana = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.estado==='Cerrada' && a.fecha_cierre && isoDateInput(new Date(a.fecha_cierre))>=lunesStr && isoDateInput(new Date(a.fecha_cierre))<=hoyStr);
+  const tiempoProm = cerradasSemana.length
+    ? cerradasSemana.reduce((s,a)=>s+(new Date(a.fecha_cierre)-new Date(a.fecha_deteccion)),0)/cerradasSemana.length
+    : null;
+
+  const panel = el('div','panel');
+  panel.innerHTML = `<h3>Esta semana — ${fmtDate(lunesStr)} al ${fmtDate(hoyStr)}</h3>`;
+
+  const cajas = el('div');
+  cajas.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px';
+  const mk = (id, valor, label, color)=>{
+    const c = el('div');
+    c.style.cssText = 'background:var(--bg-page);border-radius:10px;padding:12px 14px;cursor:pointer';
+    c.innerHTML = `<div style="font-size:20px;font-weight:700;color:${color||'var(--text-hi)'}">${valor}</div><div style="font-size:10.5px;color:var(--text-mid);font-weight:600">${label}</div>`;
+    c.id = id;
+    return c;
+  };
+  const cajaConsistencia = mk('cajaConsistencia', equiposConsistentes+' de '+eq.length, 'Inspeccionados todos los días', 'var(--good)');
+  const cajaParametro = mk('cajaParametro', rankingParametros.length ? rankingParametros[0].label : '—', 'Parámetro que más falla', 'var(--warn)');
+  const cajaAbiertas = mk('cajaAbiertasSemana', alertasViejas.length, 'Alertas abiertas 2+ días', alertasViejas.length?'var(--bad)':'var(--good)');
+  const cajaTiempo = mk('cajaTiempoProm', tiempoProm!=null?formatDuracion(tiempoProm):'—', 'Tiempo prom. de resolución', 'var(--text-hi)');
+  cajas.appendChild(cajaConsistencia); cajas.appendChild(cajaParametro); cajas.appendChild(cajaAbiertas); cajas.appendChild(cajaTiempo);
+  panel.appendChild(cajas);
+
+  const detalle = el('div');
+  detalle.id = 'semanaDetalle';
+  panel.appendChild(detalle);
+
+  let abierto = null;
+  function cerrar(){ abierto=null; detalle.innerHTML=''; }
+  function verConsistencia(){
+    detalle.innerHTML = '';
+    const wrap = el('div');
+    wrap.innerHTML = eq.map(a=>{
+      const n = diasPorEquipo[a.tag].size;
+      const color = n>=diasTranscurridos ? 'var(--good)' : (n===0 ? 'var(--bad)' : 'var(--warn)');
+      return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${displayName(a)} — ${a.area||''}</span><span style="color:${color};font-weight:600">${n} de ${diasTranscurridos} días</span></div>`;
+    }).join('');
+    detalle.appendChild(wrap);
+  }
+  function verParametros(){
+    detalle.innerHTML = '';
+    if(!rankingParametros.length){ detalle.appendChild(el('div','empty-msg','Sin alertas esta semana.')); return; }
+    const wrap = el('div');
+    wrap.innerHTML = rankingParametros.map(p=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${p.label}</span><span style="font-weight:600">${p.n} vez/veces — ${p.tags.size} equipo(s)</span></div>`).join('');
+    detalle.appendChild(wrap);
+  }
+  function verAbiertas(){
+    detalle.innerHTML = '';
+    if(!alertasViejas.length){ detalle.appendChild(el('div','empty-msg','Sin alertas abiertas hace 2 días o más.')); return; }
+    const wrap = el('div');
+    wrap.innerHTML = alertasViejas.map(a=>{
+      const act = ST.activosByTag.get(a.tag);
+      return `<div style="border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between"><span style="font-weight:700">${act?displayName(act):a.tag}</span><span style="color:var(--bad);font-weight:700">${a.diasAbierta} días</span></div>
+        <div style="font-size:12px;color:var(--text-mid)">${a.parametro_label}: ${a.valor}</div>
+      </div>`;
+    }).join('');
+    detalle.appendChild(wrap);
+  }
+  function verTiempo(){
+    detalle.innerHTML = '';
+    if(!cerradasSemana.length){ detalle.appendChild(el('div','empty-msg','Sin alertas cerradas esta semana todavía.')); return; }
+    const wrap = el('div');
+    wrap.innerHTML = cerradasSemana.map(a=>{
+      const act = ST.activosByTag.get(a.tag);
+      const dur = formatDuracion(new Date(a.fecha_cierre)-new Date(a.fecha_deteccion));
+      return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${act?displayName(act):a.tag} — ${a.parametro_label}</span><span style="font-weight:600">${dur}</span></div>`;
+    }).join('');
+    detalle.appendChild(wrap);
+  }
+  cajaConsistencia.onclick = ()=>{ if(abierto==='c'){cerrar();return;} abierto='c'; verConsistencia(); };
+  cajaParametro.onclick = ()=>{ if(abierto==='p'){cerrar();return;} abierto='p'; verParametros(); };
+  cajaAbiertas.onclick = ()=>{ if(abierto==='a'){cerrar();return;} abierto='a'; verAbiertas(); };
+  cajaTiempo.onclick = ()=>{ if(abierto==='t'){cerrar();return;} abierto='t'; verTiempo(); };
+
+  app.appendChild(panel);
+}
+
 function renderFamily(app, fam){
   const crumb = el('div','crumb');
   const back = el('button',null,'&larr; Estatus general');
@@ -890,6 +1009,7 @@ function renderFamily(app, fam){
 
   renderPanelUnificado(app, fam);
   renderPanelDia(app, fam);
+  renderPanelSemana(app, fam);
 
   const colorVar = cls==='good'?'--good':(cls==='warn'?'--warn':'--bad');
   const top = el('div','family-top');
@@ -994,6 +1114,7 @@ function renderFamiliaAreas(app, familia){
 
   renderPanelUnificado(app, familia);
   renderPanelDia(app, familia);
+  renderPanelSemana(app, familia);
 
   const grupos = grupos0;
   const grid = el('div','fam-grid');
