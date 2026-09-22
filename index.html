@@ -355,7 +355,7 @@ function familyFieldConfig(fam) { return FAMILY_FIELDS[fam] || { key: null, fiel
    ESTADO
 ========================================================= */
 const ST = {
-  activos:[], observaciones:[], inspecciones:[], familias:[],
+  activos:[], observaciones:[], inspecciones:[], familias:[], alertas:[],
   activosByTag:new Map(),
   cutoff:new Date(),
   view:{ screen:'loading', family:null, tag:null },
@@ -384,18 +384,20 @@ function displayName(act){ return (act.nombre_corto && act.nombre_corto.trim()) 
    CARGA DE DATOS
 ========================================================= */
 async function cargarTodo(){
-  const [{data:activos, error:e1}, {data:observaciones, error:e2}, {data:familias, error:e3}, {data:inspecciones, error:e4}] = await Promise.all([
+  const [{data:activos, error:e1}, {data:observaciones, error:e2}, {data:familias, error:e3}, {data:inspecciones, error:e4}, {data:alertas, error:e5}] = await Promise.all([
     sb.from('activos').select('*').order('tag'),
     sb.from('observaciones').select('*').order('fecha_observacion', {ascending:false}),
     sb.from('familias').select('*').order('orden'),
-    sb.from('inspecciones').select('*').order('fecha_inspeccion', {ascending:false})
+    sb.from('inspecciones').select('*').order('fecha_inspeccion', {ascending:false}),
+    sb.from('alertas_inspeccion').select('*').order('fecha_deteccion', {ascending:false})
   ]);
-  if(e1 || e2 || e3 || e4){
-    throw new Error((e1&&e1.message)||(e2&&e2.message)||(e3&&e3.message)||(e4&&e4.message)||'Error desconocido');
+  if(e1 || e2 || e3 || e4 || e5){
+    throw new Error((e1&&e1.message)||(e2&&e2.message)||(e3&&e3.message)||(e4&&e4.message)||(e5&&e5.message)||'Error desconocido');
   }
   ST.activos = activos||[];
   ST.observaciones = (observaciones||[]).map(o=>({...o, fecha_observacion_d:parseDate(o.fecha_observacion), fecha_cierre_d:parseDate(o.fecha_cierre)}));
   ST.inspecciones = (inspecciones||[]).map(i=>({...i, fecha_inspeccion_d:parseDate(i.fecha_inspeccion)}));
+  ST.alertas = alertas||[];
   ST.familias = familias||[];
   ST.activosByTag = new Map(ST.activos.map(a=>[a.tag,a]));
   const presentFamilies = new Set(ST.activos.filter(a=>a.es_critico).map(a=>a.familia));
@@ -526,6 +528,7 @@ function render(){
   else if(ST.view.screen==='tecnico-familias') renderTecnicoFamilias(app);
   else if(ST.view.screen==='tecnico-equipos') renderTecnicoEquipos(app, ST.view.familia);
   else if(ST.view.screen==='tecnico-form') renderTecnicoForm(app, ST.view.tag);
+  else if(ST.view.screen==='tecnico-alertas') renderTecnicoAlertas(app);
   else renderStatus(app);
   updateHeaderVisibility();
 }
@@ -759,6 +762,119 @@ function renderPanelUnificado(app, fam){
 }
 
 
+function formatDuracion(ms){
+  if(ms==null || ms<0) return '—';
+  const horas = ms/3600000;
+  if(horas < 1) return Math.round(ms/60000)+' min';
+  if(horas < 24) return horas.toFixed(1)+' h';
+  return (horas/24).toFixed(1)+' d';
+}
+
+function renderPanelDia(app, fam){
+  const eq = equiposCriticos().filter(a=>a.familia===fam);
+  if(!eq.length) return;
+  const hoyStr = isoDateInput(todayLocal());
+  const tagsFam = new Set(eq.map(a=>a.tag));
+
+  const inspHoy = ST.inspecciones.filter(i=>tagsFam.has(i.tag) && i.fecha_inspeccion_d && isoDateInput(i.fecha_inspeccion_d)===hoyStr);
+  const tagsInspeccionados = new Set(inspHoy.map(i=>i.tag));
+
+  const alertasHoy = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.fecha_deteccion && isoDateInput(new Date(a.fecha_deteccion))===hoyStr);
+
+  const panel = el('div','panel');
+  panel.innerHTML = `<h3>Hoy — ${fmtDate(hoyStr)}</h3>`;
+
+  const cajas = el('div');
+  cajas.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px';
+  const cajaCobertura = el('div');
+  cajaCobertura.style.cssText = 'background:var(--bg-page);border-radius:10px;padding:12px 14px;cursor:pointer';
+  cajaCobertura.innerHTML = `<div style="font-size:22px;font-weight:700;color:var(--text-hi)">${tagsInspeccionados.size} de ${eq.length}</div><div style="font-size:11px;color:var(--text-mid);font-weight:600">Equipos inspeccionados hoy</div>`;
+  const cajaAlertas = el('div');
+  cajaAlertas.style.cssText = 'background:'+(alertasHoy.length?'var(--bad-bg)':'var(--good-bg)')+';border-radius:10px;padding:12px 14px;cursor:pointer';
+  cajaAlertas.innerHTML = `<div style="font-size:22px;font-weight:700;color:${alertasHoy.length?'var(--bad)':'var(--good)'}">${alertasHoy.length}</div><div style="font-size:11px;color:${alertasHoy.length?'var(--bad)':'var(--good)'};font-weight:600">Alertas hoy</div>`;
+  cajas.appendChild(cajaCobertura);
+  cajas.appendChild(cajaAlertas);
+  panel.appendChild(cajas);
+
+  const detalle = el('div');
+  detalle.id = 'diaDetalle';
+  panel.appendChild(detalle);
+
+  let seccionAbierta = null;
+  function cerrarSeccion(){ seccionAbierta=null; detalle.innerHTML=''; }
+  function mostrarCobertura(){
+    const faltantes = eq.filter(a=>!tagsInspeccionados.has(a.tag));
+    const inspeccionados = eq.filter(a=>tagsInspeccionados.has(a.tag));
+    detalle.innerHTML = '';
+    const wrap = el('div');
+    wrap.style.cssText = 'margin-top:6px';
+    if(inspeccionados.length){
+      wrap.innerHTML += `<div style="font-size:11px;font-weight:600;color:var(--good);margin-bottom:4px">✓ Inspeccionados (${inspeccionados.length})</div>`;
+      wrap.innerHTML += inspeccionados.map(a=>`<div style="font-size:12.5px;padding:3px 0">${displayName(a)} — ${a.area||''}</div>`).join('');
+    }
+    if(faltantes.length){
+      wrap.innerHTML += `<div style="font-size:11px;font-weight:600;color:var(--bad);margin:10px 0 4px">✗ Sin inspección hoy (${faltantes.length})</div>`;
+      wrap.innerHTML += faltantes.map(a=>`<div style="font-size:12.5px;padding:3px 0">${displayName(a)} — ${a.area||''}</div>`).join('');
+    }
+    detalle.appendChild(wrap);
+  }
+  function mostrarAlertas(){
+    detalle.innerHTML = '';
+    if(!alertasHoy.length){
+      detalle.appendChild(el('div','empty-msg','Sin alertas hoy.'));
+      return;
+    }
+    alertasHoy.forEach(a=>{
+      const act = ST.activosByTag.get(a.tag);
+      const cerrada = a.estado==='Cerrada';
+      const dur = cerrada && a.fecha_cierre ? formatDuracion(new Date(a.fecha_cierre)-new Date(a.fecha_deteccion)) : null;
+      const card = el('div');
+      card.style.cssText = 'border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px';
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div style="font-weight:700">${act?displayName(act):a.tag}</div>
+          <span class="dias-pill ${cerrada?'good':'bad'}">${cerrada?'Cerrada':'Pendiente'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-low)">${act?act.area||'':''}</div>
+        <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:var(--bad)">${a.valor}</div></div>
+        ${cerrada ? `
+          <div class="field-row"><div class="k">Medida correctiva</div><div class="v">${a.medida_correctiva||'—'}</div></div>
+          <div class="field-row"><div class="k">Cerrado por</div><div class="v">${a.cerrado_por||'—'}</div></div>
+          <div class="field-row"><div class="k">Tiempo de resolución</div><div class="v">${dur}</div></div>
+          ${a.costo!=null ? `<div class="field-row"><div class="k">Costo</div><div class="v">${fmtMoney(a.costo)}</div></div>` : `
+            <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+              <input type="number" step="0.01" id="costo_${a.id}" placeholder="Costo (opcional)" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--line)">
+              <button type="button" class="btn" id="btnCosto_${a.id}" style="padding:6px 10px">Guardar</button>
+            </div>
+            <div class="form-msg hidden" id="msgCosto_${a.id}" style="margin-top:4px"></div>
+          `}
+        ` : ''}
+      `;
+      detalle.appendChild(card);
+      if(cerrada && a.costo==null && ST.session){
+        $('#btnCosto_'+a.id).onclick = async ()=>{
+          const val = $('#costo_'+a.id).value;
+          if(val===''){ formError('msgCosto_'+a.id, 'Ingresa un monto.'); return; }
+          const {error} = await sb.from('alertas_inspeccion').update({costo:Number(val)}).eq('id', a.id);
+          if(error){ formError('msgCosto_'+a.id, 'No se pudo guardar: '+error.message); return; }
+          await cargarTodo();
+          render();
+        };
+      }
+    });
+  }
+  cajaCobertura.onclick = ()=>{
+    if(seccionAbierta==='cobertura'){ cerrarSeccion(); return; }
+    seccionAbierta='cobertura'; mostrarCobertura();
+  };
+  cajaAlertas.onclick = ()=>{
+    if(seccionAbierta==='alertas'){ cerrarSeccion(); return; }
+    seccionAbierta='alertas'; mostrarAlertas();
+  };
+
+  app.appendChild(panel);
+}
+
 function renderFamily(app, fam){
   const crumb = el('div','crumb');
   const back = el('button',null,'&larr; Estatus general');
@@ -773,6 +889,7 @@ function renderFamily(app, fam){
   app.appendChild(head);
 
   renderPanelUnificado(app, fam);
+  renderPanelDia(app, fam);
 
   const colorVar = cls==='good'?'--good':(cls==='warn'?'--warn':'--bad');
   const top = el('div','family-top');
@@ -783,34 +900,6 @@ function renderFamily(app, fam){
     <div class="stat-box"><div class="v">${s.pendientes.length}</div><div class="l">Observaciones pendientes</div></div>
   `;
   app.appendChild(top);
-
-  const cs = checklistFamilyStats(fam);
-  if(cs.total){
-    const clPanel = el('div','panel');
-    let claveHtml = '';
-    if(cs.cfg.key && cs.promedioClave!=null){
-      claveHtml = `<div class="stat-box"><div class="v">${cs.promedioClave.toFixed(1)} ${cs.cfg.keyUnit||''}</div><div class="l">${cs.cfg.keyLabel}</div></div>`;
-    }
-    clPanel.innerHTML = `<h3>Última ronda de inspección</h3>`;
-    const bodyWrap = el('div');
-    bodyWrap.style.cssText = 'display:flex;gap:28px;flex-wrap:wrap;align-items:center';
-    if(cs.ok+cs.alerta>0){
-      bodyWrap.appendChild(buildDonutOkAlerta(cs.ok, cs.alerta));
-    }
-    const statsWrap = el('div','family-top');
-    statsWrap.style.cssText = 'margin-bottom:0;flex:1;min-width:280px';
-    statsWrap.innerHTML = `
-        <div class="stat-box"><div class="v" style="color:var(--good)">${cs.ok}</div><div class="l">Equipos OK</div></div>
-        <div class="stat-box"><div class="v" style="color:var(--warn)">${cs.alerta}</div><div class="l">Equipos con alerta</div></div>
-        <div class="stat-box"><div class="v" style="color:var(--text-low)">${cs.sinDato}</div><div class="l">Sin inspección registrada</div></div>
-        ${claveHtml}
-    `;
-    bodyWrap.appendChild(statsWrap);
-    clPanel.appendChild(bodyWrap);
-    clPanel.appendChild(el('p', null, 'Última fecha de ronda: '+(cs.ultimaFecha? fmtDate(isoDateInput(cs.ultimaFecha)) : '—')));
-    clPanel.lastChild.style.cssText = 'color:var(--text-low);font-size:12px;margin:16px 0 0';
-    app.appendChild(clPanel);
-  }
 
   const chartPanel = el('div','panel');
   chartPanel.innerHTML = '<h3>Observaciones por mes — '+ST.cutoff.getFullYear()+'</h3>';
@@ -904,6 +993,7 @@ function renderFamiliaAreas(app, familia){
   app.appendChild(head);
 
   renderPanelUnificado(app, familia);
+  renderPanelDia(app, familia);
 
   const grupos = grupos0;
   const grid = el('div','fam-grid');
@@ -2484,6 +2574,16 @@ function renderTecnicoFamilias(app){
   const head = el('div');
   head.innerHTML = `<h2 class="view-title">¿Qué vas a registrar?</h2><p class="view-sub">Elige la familia del equipo</p>`;
   app.appendChild(head);
+
+  const pendientes = ST.alertas.filter(a=>a.estado==='Pendiente');
+  if(pendientes.length){
+    const aviso = el('div');
+    aviso.style.cssText = 'background:var(--bad-bg);border:1px solid var(--bad);border-radius:10px;padding:12px 16px;margin-bottom:16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center';
+    aviso.innerHTML = `<span style="color:var(--bad);font-weight:600">⚠ ${pendientes.length} alerta(s) pendiente(s) de cerrar</span><span style="color:var(--bad);font-weight:600">Ver &rarr;</span>`;
+    aviso.onclick = ()=>go('tecnico-alertas');
+    app.appendChild(aviso);
+  }
+
   const grid = el('div','fam-grid');
   FAMILIAS_TECNICO.forEach(fam=>{
     const chip = el('div','kpi-card clickable good');
@@ -2492,6 +2592,64 @@ function renderTecnicoFamilias(app){
     grid.appendChild(chip);
   });
   app.appendChild(grid);
+}
+
+function renderTecnicoAlertas(app){
+  const crumb = el('div','crumb');
+  const back = el('button',null,'&larr; Volver');
+  back.onclick = ()=>go('tecnico-familias');
+  crumb.appendChild(back);
+  app.appendChild(crumb);
+
+  const head = el('div');
+  head.innerHTML = `<h2 class="view-title">Alertas pendientes</h2><p class="view-sub">Toca una para registrar qué se hizo y cerrarla</p>`;
+  app.appendChild(head);
+
+  const pendientes = ST.alertas.filter(a=>a.estado==='Pendiente').sort((a,b)=>new Date(b.fecha_deteccion)-new Date(a.fecha_deteccion));
+  if(!pendientes.length){
+    app.appendChild(el('div','empty-msg','No hay alertas pendientes. 🎉'));
+    return;
+  }
+
+  pendientes.forEach(a=>{
+    const act = ST.activosByTag.get(a.tag);
+    const card = el('div','panel');
+    card.style.marginBottom = '14px';
+    const fecha = new Date(a.fecha_deteccion);
+    const fechaTxt = fecha.toLocaleDateString('es-PE')+' '+fecha.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+    card.innerHTML = `
+      <div style="font-weight:700">${act?displayName(act):a.tag}</div>
+      <div style="font-size:12px;color:var(--text-low);margin-bottom:8px">${act?act.area||'':''} — ${fechaTxt}</div>
+      <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:var(--bad);font-weight:700">${a.valor}</div></div>
+      ${a.riesgo?`<div style="font-size:11.5px;color:var(--bad);margin:2px 0 10px">Riesgo: ${a.riesgo}</div>`:'<div style="margin-bottom:10px"></div>'}
+      <label>¿Quién cierra esta alerta?</label>
+      <select id="quienCierra_${a.id}">
+        <option value="">Seleccionar…</option>
+        ${TECNICOS_AUTORIZADOS.map(n=>`<option>${n}</option>`).join('')}
+      </select>
+      <label style="margin-top:10px;display:block">¿Qué se hizo para resolverlo?</label>
+      <textarea id="medida_${a.id}" placeholder="Describe la medida correctiva"></textarea>
+      <div class="form-msg hidden" id="msgAlerta_${a.id}" style="margin-top:8px"></div>
+      <div class="form-actions"><button type="button" class="btn primary" id="btnCerrar_${a.id}">Cerrar alerta</button></div>
+    `;
+    app.appendChild(card);
+    $('#btnCerrar_'+a.id).onclick = async ()=>{
+      const quien = $('#quienCierra_'+a.id).value;
+      const medida = $('#medida_'+a.id).value.trim();
+      if(!quien){ formError('msgAlerta_'+a.id, 'Selecciona quién cierra la alerta.'); return; }
+      if(!medida){ formError('msgAlerta_'+a.id, 'Describe qué se hizo antes de cerrar.'); return; }
+      $('#btnCerrar_'+a.id).disabled = true;
+      const {error} = await sb.from('alertas_inspeccion').update({
+        estado: 'Cerrada',
+        medida_correctiva: medida,
+        cerrado_por: quien,
+        fecha_cierre: new Date().toISOString()
+      }).eq('id', a.id);
+      if(error){ formError('msgAlerta_'+a.id, 'No se pudo cerrar: '+error.message); $('#btnCerrar_'+a.id).disabled=false; return; }
+      await cargarTodo();
+      go('tecnico-alertas');
+    };
+  });
 }
 
 function renderTecnicoEquipos(app, fam){
@@ -2672,7 +2830,7 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
   cfg.fields.forEach(f=>{
     const r = evaluarCampo(f, valores.datosAdicionales[f.key]);
     if(r && r.fuera){
-      alarmas.push({ label:f.label, valor:valores.datosAdicionales[f.key], detalle:valores.detalles[f.key], riesgo:r.riesgo });
+      alarmas.push({ key:f.key, label:f.label, valor:valores.datosAdicionales[f.key], detalle:valores.detalles[f.key], riesgo:r.riesgo });
     }
   });
   const hayAlarma = alarmas.length>0;
@@ -2741,8 +2899,21 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
       datos_adicionales: datosGuardar,
       registrado_por: valores.quien
     };
-    const {error} = await sb.from('inspecciones').insert(registro);
+    const {data:insData, error} = await sb.from('inspecciones').insert(registro).select().single();
     if(error){ formError('resumenTecnicoMsg','No se pudo guardar: '+error.message); btnConfirmar.disabled=false; return; }
+    if(hayAlarma && alarmas.length){
+      const filasAlertas = alarmas.map(a=>({
+        tag,
+        inspeccion_id: insData.id,
+        parametro_key: a.key,
+        parametro_label: a.label,
+        valor: (a.valor!=null?String(a.valor):'')+(a.detalle?' ('+a.detalle+')':''),
+        riesgo: a.riesgo || null,
+        estado: 'Pendiente'
+      }));
+      const {error: errAlertas} = await sb.from('alertas_inspeccion').insert(filasAlertas);
+      if(errAlertas){ formError('resumenTecnicoMsg','Inspección guardada, pero no se pudieron crear las alertas: '+errAlertas.message); btnConfirmar.disabled=false; return; }
+    }
     formOk('resumenTecnicoMsg','Inspección guardada. Gracias '+valores.quien+'.');
     setTimeout(()=>{ go('tecnico-equipos',{familia:act.familia}); }, 1200);
   };
