@@ -773,26 +773,70 @@ function formatDuracion(ms){
   return (horas/24).toFixed(1)+' d';
 }
 
-function construirPanelDia(cont, fam, eq){
-  const hoyStr = isoDateInput(todayLocal());
+function construirNavFecha(tipo, fechaRef, onCambiar){
+  const wrap = el('div');
+  wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:12px';
+  const btnAtras = el('button', null, '&larr;');
+  const btnAdelante = el('button', null, '&rarr;');
+  [btnAtras, btnAdelante].forEach(b=>{ b.type='button'; b.className='btn'; b.style.padding='6px 12px'; });
+
+  let input;
+  if(tipo==='dia' || tipo==='semana'){
+    input = document.createElement('input');
+    input.type = 'date';
+    input.value = isoDateInput(fechaRef);
+    input.style.cssText = 'padding:6px 10px;border-radius:6px;border:1px solid var(--line)';
+    input.onchange = ()=>{ if(input.value) onCambiar(new Date(input.value+'T00:00:00')); };
+    btnAtras.onclick = ()=>{ const d=new Date(fechaRef); d.setDate(d.getDate()-(tipo==='semana'?7:1)); onCambiar(d); };
+    btnAdelante.onclick = ()=>{ const d=new Date(fechaRef); d.setDate(d.getDate()+(tipo==='semana'?7:1)); onCambiar(d); };
+  } else if(tipo==='mes'){
+    input = document.createElement('input');
+    input.type = 'month';
+    input.value = fechaRef.getFullYear()+'-'+String(fechaRef.getMonth()+1).padStart(2,'0');
+    input.style.cssText = 'padding:6px 10px;border-radius:6px;border:1px solid var(--line)';
+    input.onchange = ()=>{ if(input.value){ const [y,m] = input.value.split('-'); onCambiar(new Date(Number(y), Number(m)-1, 1)); } };
+    btnAtras.onclick = ()=>{ const d=new Date(fechaRef.getFullYear(), fechaRef.getMonth()-1, 1); onCambiar(d); };
+    btnAdelante.onclick = ()=>{ const d=new Date(fechaRef.getFullYear(), fechaRef.getMonth()+1, 1); onCambiar(d); };
+  } else if(tipo==='anio'){
+    input = document.createElement('input');
+    input.type = 'number';
+    input.value = fechaRef.getFullYear();
+    input.style.cssText = 'padding:6px 10px;border-radius:6px;border:1px solid var(--line);width:90px';
+    input.onchange = ()=>{ if(input.value) onCambiar(new Date(Number(input.value), 0, 1)); };
+    btnAtras.onclick = ()=>{ onCambiar(new Date(fechaRef.getFullYear()-1, 0, 1)); };
+    btnAdelante.onclick = ()=>{ onCambiar(new Date(fechaRef.getFullYear()+1, 0, 1)); };
+  }
+  wrap.appendChild(btnAtras);
+  wrap.appendChild(input);
+  wrap.appendChild(btnAdelante);
+  return wrap;
+}
+
+function construirPanelDia(cont, fam, eq, fechaRef){
+  fechaRef = fechaRef || todayLocal();
+  const fechaStr = isoDateInput(fechaRef);
   const tagsFam = new Set(eq.map(a=>a.tag));
 
-  const inspHoy = ST.inspecciones.filter(i=>tagsFam.has(i.tag) && i.fecha_inspeccion_d && isoDateInput(i.fecha_inspeccion_d)===hoyStr);
+  const inspHoy = ST.inspecciones.filter(i=>tagsFam.has(i.tag) && i.fecha_inspeccion_d && isoDateInput(i.fecha_inspeccion_d)===fechaStr);
   const tagsInspeccionados = new Set(inspHoy.map(i=>i.tag));
 
-  const alertasHoy = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.fecha_deteccion && isoDateInput(new Date(a.fecha_deteccion))===hoyStr);
+  const alertasHoy = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.fecha_deteccion && isoDateInput(new Date(a.fecha_deteccion))===fechaStr);
 
   const panel = cont;
-  panel.innerHTML = `<p style="font-size:12px;color:var(--text-low);margin:0 0 10px">Hoy — ${fmtDate(hoyStr)}</p>`;
+  panel.innerHTML = '';
+  panel.appendChild(construirNavFecha('dia', fechaRef, (nuevaFecha)=>construirPanelDia(cont, fam, eq, nuevaFecha)));
+  const titulo = el('p', null, fmtDate(fechaStr));
+  titulo.style.cssText = 'font-size:12px;color:var(--text-low);margin:0 0 10px';
+  panel.appendChild(titulo);
 
   const cajas = el('div');
   cajas.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px';
   const cajaCobertura = el('div');
   cajaCobertura.style.cssText = 'background:var(--bg-page);border-radius:10px;padding:12px 14px;cursor:pointer';
-  cajaCobertura.innerHTML = `<div style="font-size:22px;font-weight:700;color:var(--text-hi)">${tagsInspeccionados.size} de ${eq.length}</div><div style="font-size:11px;color:var(--text-mid);font-weight:600">Equipos inspeccionados hoy</div>`;
+  cajaCobertura.innerHTML = `<div style="font-size:22px;font-weight:700;color:var(--text-hi)">${tagsInspeccionados.size} de ${eq.length}</div><div style="font-size:11px;color:var(--text-mid);font-weight:600">Equipos inspeccionados</div>`;
   const cajaAlertas = el('div');
   cajaAlertas.style.cssText = 'background:'+(alertasHoy.length?'var(--bad-bg)':'var(--good-bg)')+';border-radius:10px;padding:12px 14px;cursor:pointer';
-  cajaAlertas.innerHTML = `<div style="font-size:22px;font-weight:700;color:${alertasHoy.length?'var(--bad)':'var(--good)'}">${alertasHoy.length}</div><div style="font-size:11px;color:${alertasHoy.length?'var(--bad)':'var(--good)'};font-weight:600">Alertas hoy</div>`;
+  cajaAlertas.innerHTML = `<div style="font-size:22px;font-weight:700;color:${alertasHoy.length?'var(--bad)':'var(--good)'}">${alertasHoy.length}</div><div style="font-size:11px;color:${alertasHoy.length?'var(--bad)':'var(--good)'};font-weight:600">Alertas</div>`;
   cajas.appendChild(cajaCobertura);
   cajas.appendChild(cajaAlertas);
   panel.appendChild(cajas);
@@ -814,7 +858,7 @@ function construirPanelDia(cont, fam, eq){
       wrap.innerHTML += inspeccionados.map(a=>`<div style="font-size:12.5px;padding:3px 0">${displayName(a)} — ${a.area||''}</div>`).join('');
     }
     if(faltantes.length){
-      wrap.innerHTML += `<div style="font-size:11px;font-weight:600;color:var(--bad);margin:10px 0 4px">✗ Sin inspección hoy (${faltantes.length})</div>`;
+      wrap.innerHTML += `<div style="font-size:11px;font-weight:600;color:var(--bad);margin:10px 0 4px">✗ Sin inspección (${faltantes.length})</div>`;
       wrap.innerHTML += faltantes.map(a=>`<div style="font-size:12.5px;padding:3px 0">${displayName(a)} — ${a.area||''}</div>`).join('');
     }
     detalle.appendChild(wrap);
@@ -822,7 +866,7 @@ function construirPanelDia(cont, fam, eq){
   function mostrarAlertas(){
     detalle.innerHTML = '';
     if(!alertasHoy.length){
-      detalle.appendChild(el('div','empty-msg','Sin alertas hoy.'));
+      detalle.appendChild(el('div','empty-msg','Sin alertas ese día.'));
       return;
     }
     alertasHoy.forEach(a=>{
@@ -881,63 +925,60 @@ function inicioSemana(d){
   return lunes;
 }
 
-function construirPanelSemana(cont, fam, eq){
+function construirPanelPeriodo(cont, fam, eq, fechaInicio, fechaFin, diasEsperados, umbralAbiertos, tituloRango){
   const tagsFam = new Set(eq.map(a=>a.tag));
   const hoy = todayLocal();
-  const lunes = inicioSemana(hoy);
-  const lunesStr = isoDateInput(lunes);
-  const hoyStr = isoDateInput(hoy);
+  const inicioStr = isoDateInput(fechaInicio);
+  const finStr = isoDateInput(fechaFin);
 
-  const inspSemana = ST.inspecciones.filter(i=>tagsFam.has(i.tag) && i.fecha_inspeccion_d && isoDateInput(i.fecha_inspeccion_d)>=lunesStr && isoDateInput(i.fecha_inspeccion_d)<=hoyStr);
-  const alertasSemana = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.fecha_deteccion && isoDateInput(new Date(a.fecha_deteccion))>=lunesStr && isoDateInput(new Date(a.fecha_deteccion))<=hoyStr);
+  const inspPeriodo = ST.inspecciones.filter(i=>tagsFam.has(i.tag) && i.fecha_inspeccion_d && isoDateInput(i.fecha_inspeccion_d)>=inicioStr && isoDateInput(i.fecha_inspeccion_d)<=finStr);
+  const alertasPeriodo = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.fecha_deteccion && isoDateInput(new Date(a.fecha_deteccion))>=inicioStr && isoDateInput(new Date(a.fecha_deteccion))<=finStr);
 
   // 1. Consistencia de inspeccion
   const diasPorEquipo = {};
   eq.forEach(a=>diasPorEquipo[a.tag] = new Set());
-  inspSemana.forEach(i=>{ if(diasPorEquipo[i.tag]) diasPorEquipo[i.tag].add(isoDateInput(i.fecha_inspeccion_d)); });
-  const diasTranscurridos = Math.min(7, daysBetween(lunes, hoy)+1);
-  const equiposConsistentes = eq.filter(a=>diasPorEquipo[a.tag].size >= diasTranscurridos).length;
+  inspPeriodo.forEach(i=>{ if(diasPorEquipo[i.tag]) diasPorEquipo[i.tag].add(isoDateInput(i.fecha_inspeccion_d)); });
+  const equiposConsistentes = diasEsperados>0 ? eq.filter(a=>diasPorEquipo[a.tag].size >= diasEsperados).length : 0;
 
   // 2. Parametro que mas falla
   const porParametro = {};
-  alertasSemana.forEach(a=>{
+  alertasPeriodo.forEach(a=>{
     if(!porParametro[a.parametro_label]) porParametro[a.parametro_label] = {label:a.parametro_label, n:0, tags:new Set()};
     porParametro[a.parametro_label].n++;
     porParametro[a.parametro_label].tags.add(a.tag);
   });
   const rankingParametros = Object.values(porParametro).sort((x,y)=>y.n-x.n);
 
-  // 3. Alertas abiertas 2+ dias (sin importar cuando se detectaron, siempre y cuando sigan pendientes hoy)
-  const alertasAbiertasFam = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.estado==='Pendiente');
-  const alertasViejas = alertasAbiertasFam.map(a=>({...a, diasAbierta: daysBetween(new Date(a.fecha_deteccion), hoy)})).filter(a=>a.diasAbierta>=2).sort((x,y)=>y.diasAbierta-x.diasAbierta);
+  // 3. Alertas detectadas en el periodo que siguen pendientes hoy, abiertas hace umbralAbiertos+ dias
+  const alertasDelPeriodo = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.estado==='Pendiente' && a.fecha_deteccion && isoDateInput(new Date(a.fecha_deteccion))>=inicioStr && isoDateInput(new Date(a.fecha_deteccion))<=finStr);
+  const alertasViejas = alertasDelPeriodo.map(a=>({...a, diasAbierta: daysBetween(new Date(a.fecha_deteccion), hoy)})).filter(a=>a.diasAbierta>=umbralAbiertos).sort((x,y)=>y.diasAbierta-x.diasAbierta);
 
-  // 4. Tiempo promedio de resolucion, cerradas esta semana
-  const cerradasSemana = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.estado==='Cerrada' && a.fecha_cierre && isoDateInput(new Date(a.fecha_cierre))>=lunesStr && isoDateInput(new Date(a.fecha_cierre))<=hoyStr);
-  const tiempoProm = cerradasSemana.length
-    ? cerradasSemana.reduce((s,a)=>s+(new Date(a.fecha_cierre)-new Date(a.fecha_deteccion)),0)/cerradasSemana.length
+  // 4. Tiempo promedio de resolucion, cerradas en el periodo
+  const cerradasPeriodo = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.estado==='Cerrada' && a.fecha_cierre && isoDateInput(new Date(a.fecha_cierre))>=inicioStr && isoDateInput(new Date(a.fecha_cierre))<=finStr);
+  const tiempoProm = cerradasPeriodo.length
+    ? cerradasPeriodo.reduce((s,a)=>s+(new Date(a.fecha_cierre)-new Date(a.fecha_deteccion)),0)/cerradasPeriodo.length
     : null;
 
-  const panel = cont;
-  panel.innerHTML = `<p style="font-size:12px;color:var(--text-low);margin:0 0 10px">Semana del ${fmtDate(lunesStr)} al ${fmtDate(hoyStr)}</p>`;
+  const panel = el('div');
+  panel.innerHTML = `<p style="font-size:12px;color:var(--text-low);margin:0 0 10px">${tituloRango}</p>`;
+  cont.appendChild(panel);
 
   const cajas = el('div');
   cajas.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px';
-  const mk = (id, valor, label, color)=>{
+  const mk = (valor, label, color)=>{
     const c = el('div');
     c.style.cssText = 'background:var(--bg-page);border-radius:10px;padding:12px 14px;cursor:pointer';
     c.innerHTML = `<div style="font-size:20px;font-weight:700;color:${color||'var(--text-hi)'}">${valor}</div><div style="font-size:10.5px;color:var(--text-mid);font-weight:600">${label}</div>`;
-    c.id = id;
     return c;
   };
-  const cajaConsistencia = mk('cajaConsistencia', equiposConsistentes+' de '+eq.length, 'Inspeccionados todos los días', 'var(--good)');
-  const cajaParametro = mk('cajaParametro', rankingParametros.length ? rankingParametros[0].label : '—', 'Parámetro que más falla', 'var(--warn)');
-  const cajaAbiertas = mk('cajaAbiertasSemana', alertasViejas.length, 'Alertas abiertas 2+ días', alertasViejas.length?'var(--bad)':'var(--good)');
-  const cajaTiempo = mk('cajaTiempoProm', tiempoProm!=null?formatDuracion(tiempoProm):'—', 'Tiempo prom. de resolución', 'var(--text-hi)');
+  const cajaConsistencia = mk(equiposConsistentes+' de '+eq.length, 'Inspeccionados todos los días', 'var(--good)');
+  const cajaParametro = mk(rankingParametros.length ? rankingParametros[0].label : '—', 'Parámetro que más falla', 'var(--warn)');
+  const cajaAbiertas = mk(alertasViejas.length, 'Alertas abiertas '+umbralAbiertos+'+ días', alertasViejas.length?'var(--bad)':'var(--good)');
+  const cajaTiempo = mk(tiempoProm!=null?formatDuracion(tiempoProm):'—', 'Tiempo prom. de resolución', 'var(--text-hi)');
   cajas.appendChild(cajaConsistencia); cajas.appendChild(cajaParametro); cajas.appendChild(cajaAbiertas); cajas.appendChild(cajaTiempo);
   panel.appendChild(cajas);
 
   const detalle = el('div');
-  detalle.id = 'semanaDetalle';
   panel.appendChild(detalle);
 
   let abierto = null;
@@ -947,21 +988,21 @@ function construirPanelSemana(cont, fam, eq){
     const wrap = el('div');
     wrap.innerHTML = eq.map(a=>{
       const n = diasPorEquipo[a.tag].size;
-      const color = n>=diasTranscurridos ? 'var(--good)' : (n===0 ? 'var(--bad)' : 'var(--warn)');
-      return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${displayName(a)} — ${a.area||''}</span><span style="color:${color};font-weight:600">${n} de ${diasTranscurridos} días</span></div>`;
+      const color = n>=diasEsperados ? 'var(--good)' : (n===0 ? 'var(--bad)' : 'var(--warn)');
+      return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${displayName(a)} — ${a.area||''}</span><span style="color:${color};font-weight:600">${n} de ${diasEsperados} días</span></div>`;
     }).join('');
     detalle.appendChild(wrap);
   }
   function verParametros(){
     detalle.innerHTML = '';
-    if(!rankingParametros.length){ detalle.appendChild(el('div','empty-msg','Sin alertas esta semana.')); return; }
+    if(!rankingParametros.length){ detalle.appendChild(el('div','empty-msg','Sin alertas en este período.')); return; }
     const wrap = el('div');
     wrap.innerHTML = rankingParametros.map(p=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${p.label}</span><span style="font-weight:600">${p.n} vez/veces — ${p.tags.size} equipo(s)</span></div>`).join('');
     detalle.appendChild(wrap);
   }
   function verAbiertas(){
     detalle.innerHTML = '';
-    if(!alertasViejas.length){ detalle.appendChild(el('div','empty-msg','Sin alertas abiertas hace 2 días o más.')); return; }
+    if(!alertasViejas.length){ detalle.appendChild(el('div','empty-msg','Sin alertas abiertas hace '+umbralAbiertos+' días o más.')); return; }
     const wrap = el('div');
     wrap.innerHTML = alertasViejas.map(a=>{
       const act = ST.activosByTag.get(a.tag);
@@ -974,9 +1015,9 @@ function construirPanelSemana(cont, fam, eq){
   }
   function verTiempo(){
     detalle.innerHTML = '';
-    if(!cerradasSemana.length){ detalle.appendChild(el('div','empty-msg','Sin alertas cerradas esta semana todavía.')); return; }
+    if(!cerradasPeriodo.length){ detalle.appendChild(el('div','empty-msg','Sin alertas cerradas en este período todavía.')); return; }
     const wrap = el('div');
-    wrap.innerHTML = cerradasSemana.map(a=>{
+    wrap.innerHTML = cerradasPeriodo.map(a=>{
       const act = ST.activosByTag.get(a.tag);
       const dur = formatDuracion(new Date(a.fecha_cierre)-new Date(a.fecha_deteccion));
       return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${act?displayName(act):a.tag} — ${a.parametro_label}</span><span style="font-weight:600">${dur}</span></div>`;
@@ -987,6 +1028,43 @@ function construirPanelSemana(cont, fam, eq){
   cajaParametro.onclick = ()=>{ if(abierto==='p'){cerrar();return;} abierto='p'; verParametros(); };
   cajaAbiertas.onclick = ()=>{ if(abierto==='a'){cerrar();return;} abierto='a'; verAbiertas(); };
   cajaTiempo.onclick = ()=>{ if(abierto==='t'){cerrar();return;} abierto='t'; verTiempo(); };
+}
+
+function construirPanelSemana(cont, fam, eq, fechaRef){
+  fechaRef = fechaRef || todayLocal();
+  const hoy = todayLocal();
+  const lunes = inicioSemana(fechaRef);
+  const finSemana = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate()+6);
+  const finEfectivo = finSemana < hoy ? finSemana : hoy;
+  const diasEsperados = Math.max(0, Math.min(7, daysBetween(lunes, finEfectivo)+1));
+  cont.innerHTML = '';
+  cont.appendChild(construirNavFecha('semana', fechaRef, (f)=>construirPanelSemana(cont, fam, eq, f)));
+  construirPanelPeriodo(cont, fam, eq, lunes, finSemana, diasEsperados, 2, 'Semana del '+fmtDate(isoDateInput(lunes))+' al '+fmtDate(isoDateInput(finSemana)));
+}
+
+function construirPanelMes(cont, fam, eq, fechaRef){
+  fechaRef = fechaRef || todayLocal();
+  const hoy = todayLocal();
+  const inicio = new Date(fechaRef.getFullYear(), fechaRef.getMonth(), 1);
+  const fin = new Date(fechaRef.getFullYear(), fechaRef.getMonth()+1, 0);
+  const finEfectivo = fin < hoy ? fin : hoy;
+  const diasEsperados = Math.max(0, daysBetween(inicio, finEfectivo)+1);
+  cont.innerHTML = '';
+  cont.appendChild(construirNavFecha('mes', fechaRef, (f)=>construirPanelMes(cont, fam, eq, f)));
+  const nombreMes = inicio.toLocaleDateString('es-PE', {month:'long', year:'numeric'});
+  construirPanelPeriodo(cont, fam, eq, inicio, fin, diasEsperados, 7, nombreMes.charAt(0).toUpperCase()+nombreMes.slice(1));
+}
+
+function construirPanelAnio(cont, fam, eq, fechaRef){
+  fechaRef = fechaRef || todayLocal();
+  const hoy = todayLocal();
+  const inicio = new Date(fechaRef.getFullYear(), 0, 1);
+  const fin = new Date(fechaRef.getFullYear(), 11, 31);
+  const finEfectivo = fin < hoy ? fin : hoy;
+  const diasEsperados = Math.max(0, daysBetween(inicio, finEfectivo)+1);
+  cont.innerHTML = '';
+  cont.appendChild(construirNavFecha('anio', fechaRef, (f)=>construirPanelAnio(cont, fam, eq, f)));
+  construirPanelPeriodo(cont, fam, eq, inicio, fin, diasEsperados, 30, 'Año '+fechaRef.getFullYear());
 }
 
 function renderPanelActividad(app, fam){
@@ -1002,7 +1080,7 @@ function renderPanelActividad(app, fam){
   const contenido = el('div');
   contenido.style.paddingTop = '14px';
 
-  const TABS = [{id:'dia',label:'Día'},{id:'semana',label:'Semana'},{id:'mes',label:'Mes'}];
+  const TABS = [{id:'dia',label:'Día'},{id:'semana',label:'Semana'},{id:'mes',label:'Mes'},{id:'anio',label:'Año'}];
   let activa = 'dia';
 
   function pintarTabs(){
@@ -1022,7 +1100,9 @@ function renderPanelActividad(app, fam){
     contenido.innerHTML = '';
     if(activa==='dia') construirPanelDia(contenido, fam, eq);
     else if(activa==='semana') construirPanelSemana(contenido, fam, eq);
-    else contenido.appendChild(el('div','empty-msg','Vista mensual — próximamente.'));
+    else if(activa==='mes') construirPanelMes(contenido, fam, eq);
+    else if(activa==='anio') construirPanelAnio(contenido, fam, eq);
+
   }
 
   pintarTabs();
