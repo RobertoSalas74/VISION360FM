@@ -770,9 +770,7 @@ function formatDuracion(ms){
   return (horas/24).toFixed(1)+' d';
 }
 
-function renderPanelDia(app, fam){
-  const eq = equiposCriticos().filter(a=>a.familia===fam);
-  if(!eq.length) return;
+function construirPanelDia(cont, fam, eq){
   const hoyStr = isoDateInput(todayLocal());
   const tagsFam = new Set(eq.map(a=>a.tag));
 
@@ -781,8 +779,8 @@ function renderPanelDia(app, fam){
 
   const alertasHoy = ST.alertas.filter(a=>tagsFam.has(a.tag) && a.fecha_deteccion && isoDateInput(new Date(a.fecha_deteccion))===hoyStr);
 
-  const panel = el('div','panel');
-  panel.innerHTML = `<h3>Hoy — ${fmtDate(hoyStr)}</h3>`;
+  const panel = cont;
+  panel.innerHTML = `<p style="font-size:12px;color:var(--text-low);margin:0 0 10px">Hoy — ${fmtDate(hoyStr)}</p>`;
 
   const cajas = el('div');
   cajas.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px';
@@ -871,8 +869,6 @@ function renderPanelDia(app, fam){
     if(seccionAbierta==='alertas'){ cerrarSeccion(); return; }
     seccionAbierta='alertas'; mostrarAlertas();
   };
-
-  app.appendChild(panel);
 }
 
 function inicioSemana(d){
@@ -882,9 +878,7 @@ function inicioSemana(d){
   return lunes;
 }
 
-function renderPanelSemana(app, fam){
-  const eq = equiposCriticos().filter(a=>a.familia===fam);
-  if(!eq.length) return;
+function construirPanelSemana(cont, fam, eq){
   const tagsFam = new Set(eq.map(a=>a.tag));
   const hoy = todayLocal();
   const lunes = inicioSemana(hoy);
@@ -920,8 +914,8 @@ function renderPanelSemana(app, fam){
     ? cerradasSemana.reduce((s,a)=>s+(new Date(a.fecha_cierre)-new Date(a.fecha_deteccion)),0)/cerradasSemana.length
     : null;
 
-  const panel = el('div','panel');
-  panel.innerHTML = `<h3>Esta semana — ${fmtDate(lunesStr)} al ${fmtDate(hoyStr)}</h3>`;
+  const panel = cont;
+  panel.innerHTML = `<p style="font-size:12px;color:var(--text-low);margin:0 0 10px">Semana del ${fmtDate(lunesStr)} al ${fmtDate(hoyStr)}</p>`;
 
   const cajas = el('div');
   cajas.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px';
@@ -990,7 +984,48 @@ function renderPanelSemana(app, fam){
   cajaParametro.onclick = ()=>{ if(abierto==='p'){cerrar();return;} abierto='p'; verParametros(); };
   cajaAbiertas.onclick = ()=>{ if(abierto==='a'){cerrar();return;} abierto='a'; verAbiertas(); };
   cajaTiempo.onclick = ()=>{ if(abierto==='t'){cerrar();return;} abierto='t'; verTiempo(); };
+}
 
+function renderPanelActividad(app, fam){
+  const eq = equiposCriticos().filter(a=>a.familia===fam);
+  if(!eq.length) return;
+
+  const panel = el('div','panel');
+  panel.innerHTML = '<h3>Actividad</h3>';
+
+  const tabs = el('div');
+  tabs.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;border-bottom:1px solid var(--line)';
+
+  const contenido = el('div');
+  contenido.style.paddingTop = '14px';
+
+  const TABS = [{id:'dia',label:'Día'},{id:'semana',label:'Semana'},{id:'mes',label:'Mes'}];
+  let activa = 'dia';
+
+  function pintarTabs(){
+    tabs.innerHTML = '';
+    TABS.forEach(t=>{
+      const btn = el('button', null, t.label);
+      btn.type = 'button';
+      const esActiva = activa===t.id;
+      btn.style.cssText = 'padding:8px 16px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;'+
+        'border-bottom:2px solid '+(esActiva?'var(--sodexo-red)':'transparent')+';'+
+        'color:'+(esActiva?'var(--text-hi)':'var(--text-low)');
+      btn.onclick = ()=>{ activa = t.id; pintarTabs(); pintarContenido(); };
+      tabs.appendChild(btn);
+    });
+  }
+  function pintarContenido(){
+    contenido.innerHTML = '';
+    if(activa==='dia') construirPanelDia(contenido, fam, eq);
+    else if(activa==='semana') construirPanelSemana(contenido, fam, eq);
+    else contenido.appendChild(el('div','empty-msg','Vista mensual — próximamente.'));
+  }
+
+  pintarTabs();
+  pintarContenido();
+  panel.appendChild(tabs);
+  panel.appendChild(contenido);
   app.appendChild(panel);
 }
 
@@ -1008,8 +1043,7 @@ function renderFamily(app, fam){
   app.appendChild(head);
 
   renderPanelUnificado(app, fam);
-  renderPanelDia(app, fam);
-  renderPanelSemana(app, fam);
+  renderPanelActividad(app, fam);
 
   const colorVar = cls==='good'?'--good':(cls==='warn'?'--warn':'--bad');
   const top = el('div','family-top');
@@ -1113,8 +1147,7 @@ function renderFamiliaAreas(app, familia){
   app.appendChild(head);
 
   renderPanelUnificado(app, familia);
-  renderPanelDia(app, familia);
-  renderPanelSemana(app, familia);
+  renderPanelActividad(app, familia);
 
   const grupos = grupos0;
   const grid = el('div','fam-grid');
