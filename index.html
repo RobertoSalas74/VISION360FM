@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VISION 360° FM — Sodexo</title>
+<title>VIGIA 360° — Sodexo</title>
 <style>
   :root{
     --sodexo-red:#EE0000; --sodexo-red-dark:#C50000;
@@ -202,7 +202,7 @@
 <header id="topbar" class="no-print">
   <div class="brand">
     <div class="logo-mark">S</div>
-    <div class="site">VISION 360° FM<small id="siteSub">Sodexo · Kimberly-Clark</small></div>
+    <div class="site">VIGIA 360°<small id="siteSub">Sodexo · Kimberly-Clark</small></div>
   </div>
   <div class="spacer"></div>
   <div class="top-ctrl" id="cutoffWrap" style="display:none">
@@ -330,21 +330,48 @@ const FAMILY_FIELDS = {
   },
   "Compactos": {
     key: "flujo_aire_caliente", keyLabel: "Flujo descarga aire caliente (prom.)", keyUnit: "°C",
+    estados: ["Operativo","Inoperativo","Inhabilitado","Observado"],
+    actualizaEstadoActivo: true,
     fields: [
-      { key: "flujo_aire_caliente", label: "Flujo de descarga de aire caliente", tipo: "numerico", unidad: "°C", min: 35, max: 38,
+      { key: "temp_seteada", label: "Temperatura seteada (display)", tipo: "numerico", unidad: "°C", informativo: true, min: null, max: null,
+        riesgo: null },
+      { key: "temp_interior", label: "Temperatura interior (display)", tipo: "numerico", unidad: "°C", informativo: true, min: null, max: null,
+        riesgo: null },
+      { key: "presenta_alarma", label: "Presenta alarma", tipo: "select",
+        opciones: ["No","Sí"], opcionProblema: "Sí", detalleRequerido: true,
+        detalleLabel: "Código de alarma", detalleLabel2: "Descripción de la alarma (si la conoces)",
+        riesgo: null },
+      { key: "estado_filtro", label: "Estado de filtro", tipo: "select",
+        opciones: ["Se mantiene limpio","Necesita limpieza","Se realizó limpieza","Filtro con desgaste","No tiene filtro"],
+        opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media" },
+        riesgo: null },
+      { key: "flujo_aire_caliente", label: "Descarga de aire caliente", tipo: "numerico", unidad: "°C", min: 35, max: 38, alertaSoloSiSupera: true,
         riesgo: null }
     ]
   },
   "UMA's": {
-    key: "temp_agua_entrada", keyLabel: "Temp. agua entrada (prom.)", keyUnit: "°C",
+    key: "temp_agua_entrada", keyLabel: "Temp. agua ingreso (prom.)", keyUnit: "°C",
+    actualizaEstadoActivo: true,
     fields: [
-      { key: "temp_agua_entrada", label: "Temperatura de agua entrada", tipo: "numerico", unidad: "°C", min: 12, max: 14,
+      { key: "temp_agua_entrada", label: "Temperatura ingreso de agua", tipo: "numerico", unidad: "°C", min: 12, max: 16,
         riesgo: null },
-      { key: "temp_agua_salida", label: "Temperatura de agua salida", tipo: "numerico", unidad: "°C", min: 20, max: 22,
+      { key: "temp_agua_salida", label: "Temperatura salida de agua", tipo: "numerico", unidad: "°C", min: 14, max: 22,
         riesgo: null },
-      { key: "amperaje", label: "Amperaje", tipo: "numerico", unidad: "A", min: null, max: null,
+      { key: "amperaje", label: "Amperaje (display)", tipo: "numerico", unidad: "A", informativo: true, min: null, max: null,
         riesgo: null },
-      { key: "presion_caudal", label: "Presión de caudal de agua", tipo: "numerico", unidad: "PSI", min: 25, max: 30,
+      { key: "manometro_ingreso", label: "¿Cuenta con manómetro de ingreso?", tipo: "select",
+        opciones: ["No","Sí"], riesgo: null },
+      { key: "presion_ingreso", label: "Presión ingreso de agua", tipo: "numerico", unidad: "PSI", min: 35, max: 60,
+        dependeDe: "manometro_ingreso", dependeValor: "Sí", riesgo: null },
+      { key: "manometro_salida", label: "¿Cuenta con manómetro de salida?", tipo: "select",
+        opciones: ["No","Sí"], riesgo: null },
+      { key: "presion_salida", label: "Presión salida de agua", tipo: "numerico", unidad: "PSI", min: 35, max: 60,
+        dependeDe: "manometro_salida", dependeValor: "Sí", riesgo: null },
+      { key: "estado_filtro", label: "Estado de filtro", tipo: "select",
+        opciones: ["Se mantiene limpio","Necesita limpieza","Se realizó limpieza","Filtro con desgaste","No tiene filtro"],
+        opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media" },
+        riesgo: null },
+      { key: "descarga_aire", label: "Descarga de aire", tipo: "numerico", unidad: "°C", min: 12, max: 16, alertaSoloSiSupera: true,
         riesgo: null }
     ]
   }
@@ -878,7 +905,13 @@ function construirPanelDia(cont, fam, eq, fechaRef){
           <span class="dias-pill ${cerrada?'good':'bad'}">${cerrada?'Cerrada':'Pendiente'}</span>
         </div>
         <div style="font-size:12px;color:var(--text-low)">${act?act.area||'':''}</div>
-        <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:var(--bad)">${a.valor}</div></div>
+        <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:${a.severidad==='Media'?'var(--warn)':'var(--bad)'}">${a.valor}</div></div>
+        ${a.parametro_key==='presenta_alarma' ? (a.descripcion ? `<div class="field-row"><div class="k">Descripción de la alarma</div><div class="v">${a.descripcion}</div></div>` : (ST.session ? `
+            <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+              <input type="text" id="desc_${a.id}" placeholder="Descripción de la alarma" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--line)">
+              <button type="button" class="btn" id="btnDesc_${a.id}" style="padding:6px 10px">Guardar</button>
+            </div>
+            <div class="form-msg hidden" id="msgDesc_${a.id}" style="margin-top:4px"></div>` : '')) : ''}
         ${cerrada ? `
           <div class="field-row"><div class="k">Medida correctiva</div><div class="v">${a.medida_correctiva||'—'}</div></div>
           <div class="field-row"><div class="k">Cerrado por</div><div class="v">${a.cerrado_por||'—'}</div></div>
@@ -893,6 +926,16 @@ function construirPanelDia(cont, fam, eq, fechaRef){
         ` : ''}
       `;
       detalle.appendChild(card);
+      if(a.parametro_key==='presenta_alarma' && !a.descripcion && ST.session){
+        $('#btnDesc_'+a.id).onclick = async ()=>{
+          const val = $('#desc_'+a.id).value.trim();
+          if(!val){ formError('msgDesc_'+a.id, 'Ingresa la descripción.'); return; }
+          const {error} = await sb.from('alertas_inspeccion').update({descripcion:val}).eq('id', a.id);
+          if(error){ formError('msgDesc_'+a.id, 'No se pudo guardar: '+error.message); return; }
+          await cargarTodo();
+          render();
+        };
+      }
       if(cerrada && a.costo==null && ST.session){
         $('#btnCosto_'+a.id).onclick = async ()=>{
           const val = $('#costo_'+a.id).value;
@@ -1377,10 +1420,11 @@ function renderEquipo(app, tag){
         const v = i.datos_adicionales ? i.datos_adicionales[f.key] : null;
         if(v==null || v==='') return;
         const detalle = i.datos_adicionales ? i.datos_adicionales[f.key+'_detalle'] : null;
+        const detalle2 = i.datos_adicionales ? i.datos_adicionales[f.key+'_detalle2'] : null;
         const ev = evaluarCampo(f, v);
         const fuera = ev && ev.fuera;
-        const colorEstilo = fuera ? 'color:var(--bad);font-weight:700' : '';
-        camposHtml += `<div class="field-row"><div class="k">${f.label}</div><div class="v" style="${colorEstilo}">${v}${detalle?' ('+detalle+')':''}${fuera?' ⚠':''}</div></div>`;
+        const colorEstilo = fuera ? ('color:'+(ev.severidad==='Media'?'var(--warn)':'var(--bad)')+';font-weight:700') : '';
+        camposHtml += `<div class="field-row"><div class="k">${f.label}</div><div class="v" style="${colorEstilo}">${v}${detalle?' ('+detalle+')':''}${detalle2?' — '+detalle2:''}${fuera?' ⚠':''}</div></div>`;
         if(fuera && ev.riesgo){
           camposHtml += `<div style="font-size:11.5px;color:var(--bad);margin:-4px 0 6px 4px">Riesgo: ${ev.riesgo}</div>`;
         }
@@ -2854,7 +2898,8 @@ function renderTecnicoAlertas(app){
     card.innerHTML = `
       <div style="font-weight:700">${act?displayName(act):a.tag}</div>
       <div style="font-size:12px;color:var(--text-low);margin-bottom:8px">${act?act.area||'':''} — ${fechaTxt}</div>
-      <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:var(--bad);font-weight:700">${a.valor}</div></div>
+      <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:${a.severidad==='Media'?'var(--warn)':'var(--bad)'};font-weight:700">${a.valor}</div></div>
+      ${a.descripcion?`<div class="field-row"><div class="k">Descripción</div><div class="v">${a.descripcion}</div></div>`:''}
       ${a.riesgo?`<div style="font-size:11.5px;color:var(--bad);margin:2px 0 10px">Riesgo: ${a.riesgo}</div>`:'<div style="margin-bottom:10px"></div>'}
       <label>¿Quién cierra esta alerta?</label>
       <select id="quienCierra_${a.id}">
@@ -2925,6 +2970,11 @@ const TECNICOS_AUTORIZADOS = [
 function evaluarCampo(f, valor){
   if(!valor) return null;
   if(f.tipo==='numerico'){
+    if(f.alertaSoloSiSupera){
+      const n = Number(valor);
+      if(isNaN(n)) return null;
+      return n > f.max ? { fuera:true, riesgo: f.riesgo || null, severidad:'Alta' } : { fuera:false };
+    }
     if(f.min==null || f.max==null) return { fuera:false };
     const n = Number(valor);
     if(isNaN(n)) return null;
@@ -2934,6 +2984,10 @@ function evaluarCampo(f, valor){
     return { fuera:false };
   }
   if(f.tipo==='select'){
+    if(f.opcionesProblema){
+      const sev = f.opcionesProblema[valor];
+      return sev ? { fuera:true, riesgo: f.riesgo || null, severidad: sev } : { fuera:false };
+    }
     if(valor===f.opcionProblema){
       return { fuera:true, riesgo: f.riesgo || null };
     }
@@ -2964,12 +3018,15 @@ function renderTecnicoForm(app, tag, valoresPrevios){
   const vp = valoresPrevios || {};
   const vpCampos = vp.datosAdicionales || {};
   const vpDetalles = vp.detalles || {};
+  const vpDetalles2 = vp.detalles2 || {};
   const camposEspecificos = cfg.fields.map(f=>{
     const valPrev = vpCampos[f.key]!=null ? String(vpCampos[f.key]) : '';
     if(f.tipo==='numerico'){
       const rangoTxt = (f.min==null||f.max==null) ? 'por definir' : (f.min===f.max ? ('exactamente '+f.min) : (f.min+'–'+f.max));
-      return `<div class="full">
-        <label>${f.label} (${f.unidad}) — normal: ${rangoTxt}</label>
+      const etiqueta = f.informativo ? `${f.label} (${f.unidad})`
+        : (f.alertaSoloSiSupera ? `${f.label} (${f.unidad}) — normal: ${rangoTxt} · alerta si supera ${f.max}` : `${f.label} (${f.unidad}) — normal: ${rangoTxt}`);
+      return `<div class="full"${f.dependeDe ? ` id="campoWrap_${f.key}"` : ''}>
+        <label>${etiqueta}</label>
         <input id="campo_${f.key}" type="number" step="any" value="${valPrev.replace(/"/g,'&quot;')}">
       </div>`;
     }
@@ -2982,10 +3039,12 @@ function renderTecnicoForm(app, tag, valoresPrevios){
         <select id="campo_${f.key}" class="selectProblema" data-problema="${f.opcionProblema}" data-detalle="detalle_${f.key}">
           <option value="">Seleccionar…</option>${opts}
         </select>
-        <div id="detalleWrap_${f.key}" class="${mostrarDetalle?'':'hidden'}" style="margin-top:8px">
+        ${f.detalleLabel ? `<div id="detalleWrap_${f.key}" class="${mostrarDetalle?'':'hidden'}" style="margin-top:8px">
           <label>${f.detalleLabel}</label>
           <input id="detalle_${f.key}" type="text" value="${detallePrev}">
-        </div>
+          ${f.detalleLabel2 ? `<label style="margin-top:8px;display:block">${f.detalleLabel2}</label>
+          <input id="detalle2_${f.key}" type="text" value="${vpDetalles2[f.key] ? String(vpDetalles2[f.key]).replace(/"/g,'&quot;') : ''}">` : ''}
+        </div>` : ''}
       </div>`;
     }
     return `<div class="full"><label>${f.label}</label><input id="campo_${f.key}" type="text" value="${valPrev.replace(/"/g,'&quot;')}"></div>`;
@@ -3003,7 +3062,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
       </div>
 
       <div><label>Estado operativo</label>
-        <select id="tEstadoOp"><option${vp.estadoOp==='Operativo'||!vp.estadoOp?' selected':''}>Operativo</option><option${vp.estadoOp==='Inoperativo'?' selected':''}>Inoperativo</option></select>
+        <select id="tEstadoOp">${(cfg.estados||['Operativo','Inoperativo']).map((e,ix)=>`<option${(vp.estadoOp===e||(!vp.estadoOp&&ix===0))?' selected':''}>${e}</option>`).join('')}</select>
       </div>
       <div><label>Modo de funcionamiento</label>
         <select id="tModo"><option${vp.modo==='Prendido'||!vp.modo?' selected':''}>Prendido</option><option${vp.modo==='Apagado'?' selected':''}>Apagado</option></select>
@@ -3023,8 +3082,17 @@ function renderTecnicoForm(app, tag, valoresPrevios){
     sel.onchange = ()=>{
       const key = sel.id.replace('campo_','');
       const wrap = $('#detalleWrap_'+key);
-      wrap.classList.toggle('hidden', sel.value !== sel.dataset.problema);
+      if(wrap) wrap.classList.toggle('hidden', sel.value !== sel.dataset.problema);
     };
+  });
+
+  cfg.fields.filter(f=>f.dependeDe).forEach(f=>{
+    const dep = $('#campo_'+f.dependeDe);
+    const wrapDep = $('#campoWrap_'+f.key);
+    if(!dep || !wrapDep) return;
+    const sync = ()=> wrapDep.classList.toggle('hidden', dep.value !== f.dependeValor);
+    dep.addEventListener('change', sync);
+    sync();
   });
 
   $('#fTecnicoForm').onsubmit = (e)=>{
@@ -3033,14 +3101,24 @@ function renderTecnicoForm(app, tag, valoresPrevios){
     if(!quien){ formError('tecnicoFormMsg','Ingresa tu nombre.'); return; }
     const datosAdicionales = {};
     const detalles = {};
+    const detalles2 = {};
+    let faltaDetalle = null;
     cfg.fields.forEach(f=>{
+      if(f.dependeDe){
+        const dep = $('#campo_'+f.dependeDe);
+        if(!dep || dep.value !== f.dependeValor) return;
+      }
       const v = $('#campo_'+f.key).value.trim();
       if(v) datosAdicionales[f.key] = v;
       if(f.tipo==='select' && v===f.opcionProblema){
         const d = $('#detalle_'+f.key);
         if(d && d.value.trim()) detalles[f.key] = d.value.trim();
+        else if(f.detalleRequerido && !faltaDetalle) faltaDetalle = f.detalleLabel;
+        const d2 = $('#detalle2_'+f.key);
+        if(d2 && d2.value.trim()) detalles2[f.key] = d2.value.trim();
       }
     });
+    if(faltaDetalle){ formError('tecnicoFormMsg','Ingresa el '+faltaDetalle.toLowerCase()+'.'); return; }
     const valores = {
       quien,
       estadoOp: $('#tEstadoOp').value,
@@ -3048,6 +3126,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
       observacion: $('#tObs').value.trim(),
       datosAdicionales,
       detalles,
+      detalles2,
       dia: diaTxt
     };
     renderResumenTecnico(app, act, tag, valores, cfg);
@@ -3064,19 +3143,22 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
   cfg.fields.forEach(f=>{
     const r = evaluarCampo(f, valores.datosAdicionales[f.key]);
     if(r && r.fuera){
-      alarmas.push({ key:f.key, label:f.label, valor:valores.datosAdicionales[f.key], detalle:valores.detalles[f.key], riesgo:r.riesgo });
+      alarmas.push({ key:f.key, label:f.label, valor:valores.datosAdicionales[f.key], detalle:valores.detalles[f.key], detalle2:(valores.detalles2||{})[f.key], riesgo:r.riesgo, severidad:r.severidad||'Alta' });
     }
   });
   const hayAlarma = alarmas.length>0;
 
   if(hayAlarma){
+    const hayAlta = alarmas.some(a=>a.severidad==='Alta');
+    const colorBox = hayAlta ? 'var(--bad)' : 'var(--warn)';
     const alarmaBox = el('div','panel');
-    alarmaBox.style.cssText = 'border:2px solid var(--bad);background:var(--bad-bg)';
-    alarmaBox.innerHTML = `<h3 style="color:var(--bad)">⚠ Se detectaron ${alarmas.length} parámetro(s) fuera de rango</h3>` +
+    alarmaBox.style.cssText = 'border:2px solid '+colorBox+';background:'+(hayAlta?'var(--bad-bg)':'var(--warn-bg)');
+    alarmaBox.innerHTML = `<h3 style="color:${colorBox}">⚠ Se detectaron ${alarmas.length} parámetro(s) con alerta</h3>` +
       alarmas.map(a=>`
         <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(0,0,0,.08)">
-          <div style="font-weight:700;color:var(--bad)">${a.label}: ${a.valor}</div>
+          <div style="font-weight:700;color:${a.severidad==='Media'?'var(--warn)':'var(--bad)'}">${a.label}: ${a.valor}</div>
           ${a.detalle?`<div style="font-size:12.5px;color:var(--text-mid)">Detalle: ${a.detalle}</div>`:''}
+          ${a.detalle2?`<div style="font-size:12.5px;color:var(--text-mid)">Descripción: ${a.detalle2}</div>`:''}
           ${a.riesgo?`<div style="font-size:12.5px;color:var(--text-mid);margin-top:2px">Riesgo: ${a.riesgo}</div>`:'<div style="font-size:12.5px;color:var(--text-low);margin-top:2px">Riesgo pendiente de definir para este parámetro.</div>'}
         </div>
       `).join('');
@@ -3090,7 +3172,8 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
 
   const camposEspecificosHtml = cfg.fields.filter(f=>valores.datosAdicionales[f.key]).map(f=>{
     const det = valores.detalles[f.key] ? ' ('+valores.detalles[f.key]+')' : '';
-    return `<div class="field-row"><div class="k">${f.label}</div><div class="v">${valores.datosAdicionales[f.key]}${det}</div></div>`;
+    const det2 = (valores.detalles2||{})[f.key] ? ' — '+valores.detalles2[f.key] : '';
+    return `<div class="field-row"><div class="k">${f.label}</div><div class="v">${valores.datosAdicionales[f.key]}${det}${det2}</div></div>`;
   }).join('');
 
   const panel = el('div','panel');
@@ -3123,6 +3206,7 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
     btnConfirmar.disabled = true;
     const datosGuardar = Object.assign({}, valores.datosAdicionales);
     Object.keys(valores.detalles).forEach(k=>{ datosGuardar[k+'_detalle'] = valores.detalles[k]; });
+    Object.keys(valores.detalles2||{}).forEach(k=>{ datosGuardar[k+'_detalle2'] = valores.detalles2[k]; });
     const registro = {
       tag,
       fecha_inspeccion: isoDateInput(todayLocal()),
@@ -3143,11 +3227,23 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
         parametro_label: a.label,
         valor: (a.valor!=null?String(a.valor):'')+(a.detalle?' ('+a.detalle+')':''),
         riesgo: a.riesgo || null,
+        severidad: a.severidad || 'Alta',
+        descripcion: a.detalle2 || null,
         estado: 'Pendiente'
       }));
       const {error: errAlertas} = await sb.from('alertas_inspeccion').insert(filasAlertas);
       if(errAlertas){ formError('resumenTecnicoMsg','Inspección guardada, pero no se pudieron crear las alertas: '+errAlertas.message); btnConfirmar.disabled=false; return; }
     }
+    if(cfg.actualizaEstadoActivo){
+      const mapeo = ESTADO_DISPLAY.find(e=>e.label===valores.estadoOp);
+      const estadoDb = mapeo ? mapeo.db : valores.estadoOp;
+      const {data:actData, error: errEstado} = await sb.from('activos').update({estado: estadoDb}).eq('tag', tag).select('tag');
+      if(errEstado || !actData || !actData.length){
+        formError('resumenTecnicoMsg','Inspección guardada, pero no se pudo actualizar el estado del equipo'+(errEstado?': '+errEstado.message:'.'));
+        btnConfirmar.disabled=false; return;
+      }
+    }
+    await cargarTodo();
     formOk('resumenTecnicoMsg','Inspección guardada. Gracias '+valores.quien+'.');
     setTimeout(()=>{ go('tecnico-equipos',{familia:act.familia}); }, 1200);
   };
