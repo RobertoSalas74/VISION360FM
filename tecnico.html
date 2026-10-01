@@ -1556,9 +1556,16 @@ function openCaptureMenu(){
   `);
   $('#mNuevaObs').onclick = openFormNuevaObs;
   $('#mCerrarObs').onclick = openFormCerrarObs;
-  $('#mAltaEquipo').onclick = openFormAltaEquipo;
-  $('#mImportar').onclick = openImportWizard;
-  $('#mImportarTodo').onclick = openImportTodo;
+  if(esAdmin()){
+    $('#mAltaEquipo').onclick = openFormAltaEquipo;
+    $('#mImportar').onclick = openImportWizard;
+    $('#mImportarTodo').onclick = openImportTodo;
+  } else {
+    ['mAltaEquipo','mImportar','mImportarTodo'].forEach(id=>{ const b=$('#'+id); b.disabled = true; b.style.opacity = '.45'; b.style.cursor = 'not-allowed'; });
+    const aviso = el('p', null, 'Los cambios al inventario (altas, ediciones, importaciones) requieren aprobación de Roberto o Ronald. Si no cambió tu acceso, cierra sesión y vuelve a entrar.');
+    aviso.style.cssText = 'color:var(--text-low);font-size:12px;margin:12px 0 0';
+    $('#mImportarTodo').parentNode.appendChild(aviso);
+  }
 }
 
 /* =========================================================
@@ -2223,7 +2230,7 @@ function buildInventarioRowsFormatoSodexo(familia, headers, normHeaders, rows, m
   return { resultado, resultadoInsp: [], omitidosVacio, omitidosDuplicado, omitidosExistente:0, noNumericos: [], mode, familia };
 }
 
-const IMP = { headers:[], rows:[], mapping:{}, mode:'replace', familiaNuevas:{}, familiaOverride:'', autoTag:false, tagPrefix:'', sheetNames:[], wbCache:null };
+const IMP = { headers:[], rows:[], mapping:{}, mode:'merge', familiaNuevas:{}, familiaOverride:'', autoTag:false, tagPrefix:'', sheetNames:[], wbCache:null };
 
 
 
@@ -2261,7 +2268,7 @@ function openImportTodo(){
         const headers = aoa[hIdx].map(h=>String(h||'').trim()).filter(h=>h);
         const rows = aoa.slice(hIdx+1).filter(r=>r.some(c=>c!==null && c!==''));
         if(!rows.length) return;
-        const data = buildInventarioRows(familia, headers, rows, 'replace');
+        const data = buildInventarioRows(familia, headers, rows, 'merge');
         detectadas.push({familia, sheetName, data});
       });
 
@@ -2277,47 +2284,29 @@ function openImportTodo(){
 }
 
 function renderPreviewTodo(detectadas){
-  const filas = detectadas.map(d=>`<tr><td>${d.familia}</td><td class="tag-mono">${d.sheetName}</td><td>${d.data.resultado.length}</td><td>${d.data.omitidosVacio}</td><td>${d.data.omitidosDuplicado}</td></tr>`).join('');
-  const total = detectadas.reduce((s,d)=>s+d.data.resultado.length,0);
+  const planes = detectadas.map(d=>planificarImportacion(d.data.resultado, ST.activosByTag));
+  const filas = detectadas.map((d,i)=>`<tr><td>${d.familia}</td><td class="tag-mono">${d.sheetName}</td><td>${planes[i].nuevos.length}</td><td>${planes[i].cambios.length}</td><td>${planes[i].sinCambios}</td><td>${d.data.omitidosVacio}</td><td>${d.data.omitidosDuplicado}</td></tr>`).join('');
+  const totNuevos = planes.reduce((s,p)=>s+p.nuevos.length,0);
+  const totCambios = planes.reduce((s,p)=>s+p.cambios.length,0);
   openModal(`
     <div class="modal-head"><h3>Confirmar importación general</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
-    <table class="obs-table"><thead><tr><th>Familia</th><th>Hoja detectada</th><th>Equipos</th><th>Omitidos (vacío)</th><th>Omitidos (duplicado)</th></tr></thead>
+    <table class="obs-table"><thead><tr><th>Familia</th><th>Hoja detectada</th><th>Nuevos</th><th>A actualizar</th><th>Sin cambios</th><th>Omitidos (vacío)</th><th>Omitidos (duplicado)</th></tr></thead>
       <tbody>${filas}</tbody></table>
-    <div class="field-row" style="margin-top:14px"><div class="k">¿Qué hacer con los equipos existentes de cada familia detectada?</div>
-      <div class="v"><select id="modeTodo">
-        <option value="replace">Reemplazar todo (borra los actuales de cada familia detectada)</option>
-        <option value="append">Agregar a los existentes</option>
-      </select></div>
-    </div>
-    <p style="color:var(--text-low);font-size:12px;margin-top:8px">Total a importar: ${total} equipos en ${detectadas.length} familia(s). Las familias no detectadas en el archivo no se tocan.</p>
+    ${INFO_IMPORT}
+    <p style="color:var(--text-low);font-size:12px;margin-top:8px">Total: ${totNuevos} equipo(s) nuevo(s) y ${totCambios} a actualizar en ${detectadas.length} familia(s). Las familias no detectadas en el archivo no se tocan.</p>
     <div class="form-msg hidden" id="previewTodoMsg"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
       <button type="button" class="btn primary" id="btnConfirmarTodo">Confirmar e importar todo</button></div>
   `);
   $('#btnConfirmarTodo').onclick = async ()=>{
-    const mode = $('#modeTodo').value;
     $('#btnConfirmarTodo').disabled = true;
     try{
-      let totalImportado = 0;
+      let agregados = 0, actualizados = 0;
       for(const d of detectadas){
-        if(mode==='replace'){
-          const {data:activosFamilia} = await sb.from('activos').select('tag').eq('familia', d.familia);
-          const tagsFamilia = (activosFamilia||[]).map(a=>a.tag);
-          if(tagsFamilia.length){
-            await sb.from('inspecciones').delete().in('tag', tagsFamilia);
-            await sb.from('observaciones').delete().in('tag', tagsFamilia);
-            await sb.from('activos').delete().in('tag', tagsFamilia);
-          }
-        }
-        const CHUNK=200;
-        for(let i=0;i<d.data.resultado.length;i+=CHUNK){
-          const lote = d.data.resultado.slice(i,i+CHUNK);
-          const {error} = await sb.from('activos').insert(lote);
-          if(error) throw new Error(d.familia+': '+error.message);
-        }
-        totalImportado += d.data.resultado.length;
+        const r = await aplicarImportacionActivos(d.data.resultado, []);
+        agregados += r.agregados; actualizados += r.actualizados;
       }
-      formOk('previewTodoMsg', totalImportado+' equipos importados en total.');
+      formOk('previewTodoMsg', agregados+' equipo(s) nuevo(s) y '+actualizados+' actualizado(s). No se borró nada.');
       await cargarTodo();
       setTimeout(()=>{ closeModal(); render(); }, 1200);
     }catch(err){
@@ -2383,18 +2372,13 @@ function continuarConHoja(familia, sheetName, wb){
   openModal(`
     <div class="modal-head"><h3>${familia}</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <p style="color:var(--good);font-size:12px">Detectamos la hoja "${sheetName}" para ${familia}.</p>
-    <div class="field-row"><div class="k">¿Qué hacer con los equipos existentes de ${familia}?</div>
-      <div class="v"><select id="fixedMode2">
-        <option value="replace">Reemplazar todo (borra los actuales de esta familia)</option>
-        <option value="append">Agregar a los existentes</option>
-      </select></div>
-    </div>
+    <p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.</p>
     <div class="form-msg hidden" id="sheetMsg2"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
       <button type="button" class="btn primary" id="btnContinuarAuto">Continuar</button></div>
   `);
   $('#btnContinuarAuto').onclick = async ()=>{
-    const mode = $('#fixedMode2').value;
+    const mode = 'merge';
     const ws = wb.Sheets[sheetName];
     const aoa = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
     if(!aoa.length){ formError('sheetMsg2','Esa hoja está vacía.'); return; }
@@ -2414,19 +2398,14 @@ function renderFixedSheetPick(familia, preseleccion){
     <div class="modal-head"><h3>¿Qué hoja tiene ${familia}?</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     ${preseleccion? '<p style="color:var(--good);font-size:12px">Detectamos una hoja que probablemente es esta.</p>':''}
     <select id="sheetPick" style="width:100%">${opts}</select>
-    <div class="field-row" style="margin-top:10px"><div class="k">¿Qué hacer con los equipos existentes de ${familia}?</div>
-      <div class="v"><select id="fixedMode">
-        <option value="replace">Reemplazar todo (borra los actuales de esta familia)</option>
-        <option value="append">Agregar a los existentes</option>
-      </select></div>
-    </div>
+    <p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.</p>
     <div class="form-msg hidden" id="sheetMsg"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
       <button type="button" class="btn primary" id="btnContinuarHoja">Continuar</button></div>
   `);
   $('#btnContinuarHoja').onclick = async ()=>{
     const sheetName = $('#sheetPick').value;
-    const mode = $('#fixedMode').value;
+    const mode = 'merge';
     const ws = IMP.wbCache.Sheets[sheetName];
     const aoa = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
     if(!aoa.length){ formError('sheetMsg','Esa hoja está vacía.'); return; }
@@ -2549,14 +2528,7 @@ function renderMappingStep(){
     <h3 style="margin-top:16px">Parámetros técnicos (opcional — solo se guardan los que apliquen a la familia de cada equipo)</h3>
     ${techRows}
 
-    <div class="field-row"><div class="k">¿Qué hacer con los equipos existentes?</div>
-      <div class="v">
-        <select id="impMode">
-          <option value="replace">Reemplazar todo (borra los actuales)</option>
-          <option value="append">Agregar a los existentes</option>
-        </select>
-      </div>
-    </div>
+    <p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.</p>
     <div class="form-msg hidden" id="mapMsg"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
       <button type="button" class="btn primary" id="btnContinuarMapeo">Continuar</button></div>
@@ -2587,7 +2559,7 @@ function renderMappingStep(){
       formError('mapMsg','Una misma columna del Excel está asignada a más de un campo, revisa el mapeo: '+detalle);
       return;
     }
-    IMP.mode = $('#impMode').value;
+    IMP.mode = 'merge';
     resolverFamilias();
   };
 }
@@ -2725,17 +2697,21 @@ function renderPreviewStep(dataOverride){
   IMP._previewInsp = resultadoInsp;
   if(dataOverride){ IMP.mode = dataOverride.mode; IMP.familiaNuevas = {}; }
   const familiasNuevasACrear = Array.from(new Set(Object.entries(IMP.familiaNuevas).filter(([k,v])=>v==='__crear__').map(([k])=>k)));
+  const plan = planificarImportacion(resultado, ST.activosByTag);
+  const tagsNuevosPrev = new Set(plan.nuevos.map(n=>n.tag));
+  const inspNuevas = resultadoInsp.filter(i=>tagsNuevosPrev.has(i.tag)).length;
   const muestra = resultado.slice(0,8).map(r=>`<tr><td class="tag-mono">${r.tag}</td><td>${r.descripcion||''}</td><td>${r.familia}</td><td>${r.estado}</td></tr>`).join('');
   openModal(`
     <div class="modal-head"><h3>Confirmar importación</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
-    <div class="field-row"><div class="k">Equipos a importar</div><div class="v">${resultado.length}</div></div>
-    <div class="field-row"><div class="k">Rondas de inspección incluidas</div><div class="v">${resultadoInsp.length}</div></div>
+    <div class="field-row"><div class="k">Equipos nuevos (se agregan)</div><div class="v">${plan.nuevos.length}</div></div>
+    <div class="field-row"><div class="k">Equipos existentes a actualizar</div><div class="v">${plan.cambios.length}</div></div>
+    <div class="field-row"><div class="k">Equipos existentes sin cambios</div><div class="v">${plan.sinCambios}</div></div>
+    ${plan.familiaDistinta? `<div class="field-row"><div class="k">Con familia distinta a la actual (no se modifican)</div><div class="v">${plan.familiaDistinta}</div></div>`:''}
+    <div class="field-row"><div class="k">Rondas de inspección (solo de equipos nuevos)</div><div class="v">${inspNuevas}</div></div>
     <div class="field-row"><div class="k">Omitidos (TAG vacío)</div><div class="v">${omitidosVacio}</div></div>
     <div class="field-row"><div class="k">Omitidos (TAG duplicado en el archivo)</div><div class="v">${omitidosDuplicado}</div></div>
-    ${IMP.mode==='append'? `<div class="field-row"><div class="k">Omitidos (TAG ya existe en el sistema)</div><div class="v">${omitidosExistente}</div></div>`:''}
-    <div class="field-row"><div class="k">Modo</div><div class="v">${IMP.mode==='replace'?'Reemplazar todo':'Agregar a los existentes'}</div></div>
     ${familiasNuevasACrear.length? `<div class="field-row"><div class="k">Familias nuevas a crear</div><div class="v">${familiasNuevasACrear.join(', ')}</div></div>`:''}
-    ${IMP.mode==='replace'? '<div class="form-msg err">Al reemplazar, también se eliminarán todas las observaciones e inspecciones actuales (quedarían huérfanas sin sus equipos).</div>':''}
+    ${INFO_IMPORT}
     ${noNumericos.length? `<div class="form-msg err">${noNumericos.length} valor(es) no numérico(s) fueron ignorados (revisa el mapeo si no era lo esperado): ${noNumericos.slice(0,5).join('; ')}${noNumericos.length>5?'…':''}</div>`:''}
     <h3 style="margin-top:16px">Vista previa (primeras 8 filas)</h3>
     <table class="obs-table"><thead><tr><th>TAG</th><th>Descripción</th><th>Familia</th><th>Estado</th></tr></thead><tbody>${muestra}</tbody></table>
@@ -2746,6 +2722,75 @@ function renderPreviewStep(dataOverride){
   $('#btnEjecutarImport').onclick = ejecutarImportacion;
 }
 
+/* ---------- IMPORTACION SEGURA: agrega nuevos y actualiza existentes, NUNCA borra ---------- */
+const INFO_IMPORT = '<p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.</p>';
+const IMPORT_CAMPOS_PROTEGIDOS = ['id','tag','estado','familia','es_critico','fecha_alta','created_at','updated_at'];
+
+function mismoValor(a, b){
+  if(a===null || a===undefined) return false;
+  if(typeof a==='number' || typeof b==='number'){
+    const na = Number(a), nb = Number(b);
+    if(!isNaN(na) && !isNaN(nb)) return na===nb;
+  }
+  return String(a).trim() === String(b).trim();
+}
+
+function planificarImportacion(filas, existentesPorTag){
+  const nuevos = [], cambios = [];
+  let sinCambios = 0, familiaDistinta = 0;
+  const vistos = new Set();
+  (filas||[]).forEach(f=>{
+    const tag = f.tag;
+    if(!tag || vistos.has(tag)) return;
+    vistos.add(tag);
+    const ex = existentesPorTag.get(tag);
+    if(!ex){ nuevos.push(f); return; }
+    if(f.familia && ex.familia && f.familia !== ex.familia) familiaDistinta++;
+    const campos = {};
+    Object.keys(f).forEach(k=>{
+      if(IMPORT_CAMPOS_PROTEGIDOS.indexOf(k)!==-1) return;
+      const nuevo = f[k];
+      if(nuevo===null || nuevo===undefined || nuevo==='') return;
+      if(typeof nuevo==='number' && isNaN(nuevo)) return;
+      if(!mismoValor(ex[k], nuevo)) campos[k] = nuevo;
+    });
+    if(Object.keys(campos).length) cambios.push({tag, campos}); else sinCambios++;
+  });
+  return {nuevos, cambios, sinCambios, familiaDistinta};
+}
+
+async function aplicarImportacionActivos(filas, filasInsp){
+  const {data, error} = await sb.from('activos').select('*');
+  if(error) throw error;
+  const existentes = new Map((data||[]).map(a=>[a.tag, a]));
+  const plan = planificarImportacion(filas, existentes);
+  const CHUNK = 200;
+  for(let i=0;i<plan.nuevos.length;i+=CHUNK){
+    const {error:e1} = await sb.from('activos').insert(plan.nuevos.slice(i,i+CHUNK));
+    if(e1) throw e1;
+  }
+  for(let i=0;i<plan.cambios.length;i+=6){
+    const grupo = plan.cambios.slice(i,i+6);
+    const resultados = await Promise.all(grupo.map(c=>sb.from('activos').update(c.campos).eq('tag', c.tag).select('tag')));
+    resultados.forEach((r,ix)=>{
+      if(r.error) throw r.error;
+      if(!r.data || !r.data.length) throw new Error('No se pudo actualizar '+grupo[ix].tag+' (sin permiso).');
+    });
+  }
+  const tagsNuevos = new Set(plan.nuevos.map(n=>n.tag));
+  const insp = (filasInsp||[]).filter(x=>tagsNuevos.has(x.tag));
+  for(let i=0;i<insp.length;i+=CHUNK){
+    const {error:e2} = await sb.from('inspecciones').insert(insp.slice(i,i+CHUNK));
+    if(e2) throw e2;
+  }
+  return {agregados:plan.nuevos.length, actualizados:plan.cambios.length, sinCambios:plan.sinCambios, familiaDistinta:plan.familiaDistinta, inspIncluidas:insp.length};
+}
+
+function esAdmin(){
+  const u = ST.session && ST.session.user;
+  return !!(u && u.app_metadata && u.app_metadata.rol_app === 'admin');
+}
+
 async function ejecutarImportacion(){
   $('#btnEjecutarImport').disabled = true;
   try{
@@ -2754,33 +2799,8 @@ async function ejecutarImportacion(){
       const maxOrden = ST.familias.reduce((m,f)=>Math.max(m,f.orden||0),0);
       await sb.from('familias').insert({nombre, orden:maxOrden+1});
     }
-    if(IMP.mode==='replace'){
-      if(IMP.fixedFamilia){
-        const {data:activosFamilia} = await sb.from('activos').select('tag').eq('familia', IMP.fixedFamilia);
-        const tagsFamilia = (activosFamilia||[]).map(a=>a.tag);
-        if(tagsFamilia.length){
-          await sb.from('inspecciones').delete().in('tag', tagsFamilia);
-          await sb.from('observaciones').delete().in('tag', tagsFamilia);
-          await sb.from('activos').delete().in('tag', tagsFamilia);
-        }
-      } else {
-        await sb.from('inspecciones').delete().neq('tag','__none__');
-        await sb.from('observaciones').delete().neq('id_obs','__none__');
-        await sb.from('activos').delete().neq('tag','__none__');
-      }
-    }
-    const CHUNK=200;
-    for(let i=0;i<IMP._preview.length;i+=CHUNK){
-      const lote = IMP._preview.slice(i,i+CHUNK);
-      const {error} = await sb.from('activos').insert(lote);
-      if(error) throw error;
-    }
-    for(let i=0;i<IMP._previewInsp.length;i+=CHUNK){
-      const lote = IMP._previewInsp.slice(i,i+CHUNK);
-      const {error} = await sb.from('inspecciones').insert(lote);
-      if(error) throw error;
-    }
-    formOk('execMsg', IMP._preview.length+' equipos y '+IMP._previewInsp.length+' rondas de inspección importados correctamente.');
+    const r = await aplicarImportacionActivos(IMP._preview, IMP._previewInsp);
+    formOk('execMsg', r.agregados+' equipo(s) nuevo(s), '+r.actualizados+' actualizado(s), '+r.sinCambios+' sin cambios. No se borró nada.'+(r.familiaDistinta? ' '+r.familiaDistinta+' con familia distinta no se modificaron.' : ''));
     await cargarTodo();
     setTimeout(()=>{ closeModal(); render(); }, 1200);
   }catch(err){
