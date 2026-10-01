@@ -289,10 +289,10 @@ const FAMILY_FIELDS = {
       { key: "presion_entrada", label: "Presión de entrada de agua", tipo: "numerico", unidad: "PSI", informativo: true, min: null, max: null, riesgo: null },
       { key: "presion_salida", label: "Presión de salida de agua", tipo: "numerico", unidad: "PSI", informativo: true, min: null, max: null, riesgo: null },
       { key: "capacidad_trabajo", label: "Capacidad de trabajo del chiller", tipo: "numerico", unidad: "%", informativo: true, min: null, max: null, limiteMin: 0, limiteMax: 100, riesgo: null },
-      { key: "bomba_primaria_1", label: "Bombas primarias — Bomba 1", tipo: "select", opciones: ["Operativo","Inoperativo"], riesgo: null },
-      { key: "bomba_primaria_2", label: "Bombas primarias — Bomba 2", tipo: "select", opciones: ["Operativo","Inoperativo"], riesgo: null },
-      { key: "bomba_secundaria_1", label: "Bombas secundarias — Bomba 1", tipo: "select", opciones: ["Operativo","Inoperativo"], riesgo: null },
-      { key: "bomba_secundaria_2", label: "Bombas secundarias — Bomba 2", tipo: "select", opciones: ["Operativo","Inoperativo"], riesgo: null }
+      { key: "bomba_primaria_1", label: "Estado de bombas primarias (Bomba 1)", tipo: "select", opciones: ["Operativo","Inoperativo"], grupo: "bombas_primarias", grupoTitulo: "Estado de bombas primarias", subLabel: "Bomba 1", riesgo: null },
+      { key: "bomba_primaria_2", label: "Estado de bombas primarias (Bomba 2)", tipo: "select", opciones: ["Operativo","Inoperativo"], grupo: "bombas_primarias", grupoTitulo: "Estado de bombas primarias", subLabel: "Bomba 2", riesgo: null },
+      { key: "bomba_secundaria_1", label: "Estado de bombas secundarias (Bomba 1)", tipo: "select", opciones: ["Operativo","Inoperativo"], grupo: "bombas_secundarias", grupoTitulo: "Estado de bombas secundarias", subLabel: "Bomba 1", riesgo: null },
+      { key: "bomba_secundaria_2", label: "Estado de bombas secundarias (Bomba 2)", tipo: "select", opciones: ["Operativo","Inoperativo"], grupo: "bombas_secundarias", grupoTitulo: "Estado de bombas secundarias", subLabel: "Bomba 2", riesgo: null }
     ]
   },
   "Compresores": {
@@ -3403,10 +3403,69 @@ const TECNICOS_AUTORIZADOS = [
   "LLIUYACC LIMA ROBINSON"
 ];
 
+/* ---------- Campo compuesto: estado de bombas (se elige la bomba y luego su estado) ---------- */
+function htmlGrupoBombas(grupo, miembros, vpCampos){
+  const titulo = miembros[0].grupoTitulo || grupo;
+  const btnId = 'gbtn_'+grupo;
+  const ocultos = miembros.map(m=>'<input type="hidden" id="campo_'+m.key+'" data-sub="'+escHtml(m.subLabel||m.label)+'" data-box="'+btnId+'" value="'+escHtml(vpCampos[m.key]!=null ? vpCampos[m.key] : '')+'">').join('');
+  return '<div class="full grupoBombas" data-grupo="'+escHtml(grupo)+'">'+
+    '<label>'+escHtml(titulo)+'</label>'+ocultos+
+    '<button type="button" class="gb-campo" id="'+btnId+'" style="width:100%;display:flex;justify-content:space-between;align-items:center;text-align:left;background:#fff;border:1px solid var(--line);color:var(--text-hi);padding:10px 9px;border-radius:6px;font-size:13px;cursor:pointer">'+
+      '<span class="gb-resumen"></span><span class="gb-flecha" aria-hidden="true">▾</span></button>'+
+    '<div class="gb-lista" style="display:none;margin-top:6px;background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden"></div>'+
+  '</div>';
+}
+
+function activarGrupoBombas(root){
+  const inputs = Array.from(root.querySelectorAll('input[data-sub]'));
+  const resumen = root.querySelector('.gb-resumen'), flecha = root.querySelector('.gb-flecha'), lista = root.querySelector('.gb-lista');
+  const OPCIONES = ['Operativo','Inoperativo'];
+  let abierta = false, bombaAbierta = null;
+  function pintar(){
+    resumen.innerHTML = inputs.every(i=>!i.value)
+      ? '<span style="color:var(--text-low)">Seleccionar…</span>'
+      : escHtml(inputs.map(i=>i.dataset.sub+': '+(i.value||'sin elegir')).join(' · '));
+    flecha.textContent = abierta ? '▴' : '▾';
+    lista.style.display = abierta ? 'block' : 'none';
+    lista.innerHTML = inputs.map((inp, ix)=>{
+      const val = inp.value;
+      const color = val==='Operativo' ? 'var(--good)' : (val==='Inoperativo' ? 'var(--bad)' : 'var(--text-low)');
+      let h = '<button type="button" data-act="bomba" data-ix="'+ix+'" style="width:100%;display:flex;justify-content:space-between;align-items:center;text-align:left;background:#fff;border:0;'+(ix ? 'border-top:1px solid var(--line);' : '')+'padding:10px 12px;font-size:13px;color:var(--text-hi);cursor:pointer"><span>'+escHtml(inp.dataset.sub)+'</span><span style="color:'+color+'">'+escHtml(val || 'Sin elegir')+'</span></button>';
+      if(bombaAbierta===ix){
+        h += '<div style="display:flex;gap:8px;padding:8px 12px 10px;background:var(--bg-page)">'+OPCIONES.map(op=>
+          '<button type="button" data-act="estado" data-ix="'+ix+'" data-v="'+op+'" style="flex:1;background:#fff;border:1px solid '+(val===op ? 'var(--text-hi)' : 'var(--line)')+';border-radius:6px;padding:10px;font-size:13px;color:var(--text-hi);cursor:pointer;'+(val===op ? 'font-weight:700' : '')+'">'+op+'</button>').join('')+'</div>';
+      }
+      return h;
+    }).join('');
+  }
+  root.addEventListener('click', (e)=>{
+    const b = e.target.closest('button');
+    if(!b || !root.contains(b)) return;
+    if(b.classList.contains('gb-campo')){ abierta = !abierta; if(!abierta) bombaAbierta = null; }
+    else if(b.dataset.act==='bomba'){ const ix = Number(b.dataset.ix); bombaAbierta = (bombaAbierta===ix) ? null : ix; }
+    else if(b.dataset.act==='estado'){ const inp = inputs[Number(b.dataset.ix)]; inp.value = b.dataset.v; bombaAbierta = null; inp.dispatchEvent(new Event('change', {bubbles:true})); }
+    pintar();
+  });
+  pintar();
+}
+
+function objetivoMarca(el){
+  return (el && el.dataset && el.dataset.box) ? (document.getElementById(el.dataset.box) || el) : el;
+}
+
 function marcarFaltaCampo(el){
   if(!el) return;
-  el.style.borderColor = 'var(--bad)';
-  const quitar = ()=>{ el.style.borderColor = ''; el.removeEventListener('input', quitar); el.removeEventListener('change', quitar); };
+  const t = objetivoMarca(el);
+  t.style.borderColor = 'var(--bad)';
+  const quitar = ()=>{
+    if(el.dataset.box){
+      const g = el.closest('.grupoBombas');
+      if(g && Array.from(g.querySelectorAll('input[data-sub]')).some(i=>!i.value)) return;
+    }
+    t.style.borderColor = '';
+    el.removeEventListener('input', quitar);
+    el.removeEventListener('change', quitar);
+  };
   el.addEventListener('input', quitar);
   el.addEventListener('change', quitar);
 }
@@ -3464,6 +3523,10 @@ function renderTecnicoForm(app, tag, valoresPrevios){
   const vpDetalles = vp.detalles || {};
   const vpDetalles2 = vp.detalles2 || {};
   const camposEspecificos = cfg.fields.map(f=>{
+    if(f.grupo){
+      const miembros = cfg.fields.filter(x=>x.grupo===f.grupo);
+      return miembros[0].key===f.key ? htmlGrupoBombas(f.grupo, miembros, vpCampos) : '';
+    }
     const valPrev = vpCampos[f.key]!=null ? String(vpCampos[f.key]) : '';
     if(f.tipo==='numerico'){
       const rangoTxt = (f.min==null||f.max==null) ? 'por definir' : (f.min===f.max ? ('exactamente '+f.min) : (f.min+'–'+f.max));
@@ -3523,6 +3586,8 @@ function renderTecnicoForm(app, tag, valoresPrevios){
   `;
   app.appendChild(panel);
 
+  document.querySelectorAll('.grupoBombas').forEach(activarGrupoBombas);
+
   document.querySelectorAll('.selectProblema').forEach(sel=>{
     sel.onchange = ()=>{
       const key = sel.id.replace('campo_','');
@@ -3568,7 +3633,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
       }
     });
     cfg.fields.forEach(f=>{
-      const e1 = $('#campo_'+f.key); if(e1) e1.style.borderColor = '';
+      const e1 = $('#campo_'+f.key); if(e1) objetivoMarca(e1).style.borderColor = '';
       const e2 = $('#detalle_'+f.key); if(e2) e2.style.borderColor = '';
     });
     const faltantes = [];
