@@ -3400,6 +3400,14 @@ const TECNICOS_AUTORIZADOS = [
   "LLIUYACC LIMA ROBINSON"
 ];
 
+function marcarFaltaCampo(el){
+  if(!el) return;
+  el.style.borderColor = 'var(--bad)';
+  const quitar = ()=>{ el.style.borderColor = ''; el.removeEventListener('input', quitar); el.removeEventListener('change', quitar); };
+  el.addEventListener('input', quitar);
+  el.addEventListener('change', quitar);
+}
+
 function evaluarCampo(f, valor){
   if(!valor) return null;
   if(f.tipo==='numerico'){
@@ -3487,6 +3495,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
   panel.id = 'tecnicoFormPanel';
   panel.innerHTML = `
     <form class="form-grid" id="fTecnicoForm">
+      <div class="full" style="font-size:12px;color:var(--text-low)">Todos los campos son obligatorios, excepto la observación.</div>
       <div class="full"><label>¿Quién registra?</label>
         <select id="tQuien" required>
           <option value="">Seleccionar…</option>
@@ -3555,6 +3564,26 @@ function renderTecnicoForm(app, tag, valoresPrevios){
         if(d2 && d2.value.trim()) detalles2[f.key] = d2.value.trim();
       }
     });
+    cfg.fields.forEach(f=>{
+      const e1 = $('#campo_'+f.key); if(e1) e1.style.borderColor = '';
+      const e2 = $('#detalle_'+f.key); if(e2) e2.style.borderColor = '';
+    });
+    const faltantes = [];
+    cfg.fields.forEach(f=>{
+      if(f.dependeDe){
+        const dep = $('#campo_'+f.dependeDe);
+        if(!dep || dep.value !== f.dependeValor) return;
+      }
+      const e1 = $('#campo_'+f.key);
+      if(!e1) return;
+      const v = e1.value.trim();
+      if(v===''){ faltantes.push(f.label); marcarFaltaCampo(e1); return; }
+      if(f.tipo==='select' && f.detalleLabel && v===f.opcionProblema){
+        const e2 = $('#detalle_'+f.key);
+        if(e2 && !e2.value.trim()){ faltantes.push(f.detalleLabel+' ('+f.label+')'); marcarFaltaCampo(e2); }
+      }
+    });
+    if(faltantes.length){ formError('tecnicoFormMsg','Falta completar: '+faltantes.join('; ')+'.'); return; }
     if(faltaDetalle){ formError('tecnicoFormMsg','Ingresa el '+faltaDetalle.toLowerCase()+'.'); return; }
     if(fueraDeTope){ formError('tecnicoFormMsg', fueraDeTope); return; }
     const valores = {
