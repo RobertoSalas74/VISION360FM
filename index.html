@@ -210,6 +210,7 @@
     <input type="date" id="cutoffDate">
   </div>
   <button class="btn ghost" id="btnPrint" style="display:none">Imprimir</button>
+  <button class="btn ghost" id="btnPropuestas" style="display:none">Propuestas</button>
   <button class="btn primary" id="btnRegistrar" style="display:none">Registrar</button>
   <button class="btn ghost" id="btnLogin" style="display:none">Iniciar sesión</button>
   <span class="badge" id="userBadge" style="display:none"></span>
@@ -382,7 +383,7 @@ function familyFieldConfig(fam) { return FAMILY_FIELDS[fam] || { key: null, fiel
    ESTADO
 ========================================================= */
 const ST = {
-  activos:[], observaciones:[], inspecciones:[], familias:[], alertas:[],
+  activos:[], observaciones:[], inspecciones:[], familias:[], alertas:[], propuestas:[], avisoPropuestas:null,
   activosByTag:new Map(),
   cutoff:new Date(),
   view:{ screen:'loading', family:null, tag:null },
@@ -556,11 +557,13 @@ function render(){
   else if(ST.view.screen==='tecnico-equipos') renderTecnicoEquipos(app, ST.view.familia);
   else if(ST.view.screen==='tecnico-form') renderTecnicoForm(app, ST.view.tag);
   else if(ST.view.screen==='tecnico-alertas') renderTecnicoAlertas(app);
+  else if(ST.view.screen==='propuestas') renderPropuestas(app);
   else renderStatus(app);
   updateHeaderVisibility();
 }
 
 function updateHeaderVisibility(){
+  actualizarBotonPropuestas();
   if(ST.modoTecnico){
     $('#cutoffWrap').style.display='none';
     $('#btnPrint').style.display='none';
@@ -1348,6 +1351,17 @@ function renderEquipo(app, tag){
   head.innerHTML = `<h2 class="view-title">${displayName(act)}</h2><p class="view-sub">${act.tag} — ${act.descripcion||''}</p>`;
   app.appendChild(head);
 
+  if(!ST.modoTecnico && (esAdmin() || esProponente())){
+    const acc = el('div');
+    acc.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px';
+    const bEd = el('button', null, esAdmin() ? 'Editar equipo' : 'Proponer edición');
+    bEd.type = 'button'; bEd.className = 'btn'; bEd.onclick = ()=>openFormEditarEquipo(act.tag);
+    const bDel = el('button', null, esAdmin() ? 'Eliminar equipo' : 'Proponer eliminar');
+    bDel.type = 'button'; bDel.className = 'btn'; bDel.style.color = 'var(--bad)'; bDel.onclick = ()=>openFormEliminarEquipo(act.tag);
+    acc.appendChild(bEd); acc.appendChild(bDel);
+    app.appendChild(acc);
+  }
+
   const antig = act.anio_fabricacion ? (new Date().getFullYear() - act.anio_fabricacion) : null;
   const potTxt = act.potencia_kw!=null ? act.potencia_kw+' kW' : (act.capacidad_valor!=null ? act.capacidad_valor+' '+(act.capacidad_unidad||'') : '—');
   const invPanel = el('div','panel');
@@ -1537,6 +1551,8 @@ function openLoginModal(){
     ST.session = data.session;
     closeModal();
     updateHeaderVisibility();
+    await cargarPropuestas();
+    updateHeaderVisibility();
   };
 }
 
@@ -1557,6 +1573,16 @@ function openCaptureMenu(){
     $('#mAltaEquipo').onclick = openFormAltaEquipo;
     $('#mImportar').onclick = openImportWizard;
     $('#mImportarTodo').onclick = openImportTodo;
+  } else if(esProponente()){
+    $('#mAltaEquipo').textContent = 'Alta de equipo (propuesta)';
+    $('#mImportar').textContent = 'Importar equipos desde Excel (propuesta)';
+    $('#mImportarTodo').textContent = 'Importar todas las familias (propuesta)';
+    $('#mAltaEquipo').onclick = openFormAltaEquipo;
+    $('#mImportar').onclick = openImportWizard;
+    $('#mImportarTodo').onclick = openImportTodo;
+    const aviso = el('p', null, 'Tus cambios al inventario se envían como propuesta y se aplican cuando Roberto o Ronald la aprueban.');
+    aviso.style.cssText = 'color:var(--text-low);font-size:12px;margin:12px 0 0';
+    $('#mImportarTodo').parentNode.appendChild(aviso);
   } else {
     ['mAltaEquipo','mImportar','mImportarTodo'].forEach(id=>{ const b=$('#'+id); b.disabled = true; b.style.opacity = '.45'; b.style.cursor = 'not-allowed'; });
     const aviso = el('p', null, 'Los cambios al inventario (altas, ediciones, importaciones) requieren aprobación de Roberto o Ronald. Si no cambió tu acceso, cierra sesión y vuelve a entrar.');
@@ -1688,6 +1714,14 @@ function openFormAltaEquipo(){
       es_critico:true, criticidad:$('#aCrit').value, ubicacion_especifica:$('#aUbic').value,
       estado:$('#aEstado').value, fecha_alta:isoDateInput(todayLocal())
     };
+    if(!esAdmin() && esProponente()){
+      const rp = await enviarPropuesta({tipo:'alta', tag, familia:nuevo.familia, resumen:'Alta de equipo '+tag+(nuevo.descripcion? ' — '+nuevo.descripcion : ''), datos:{fila:nuevo}});
+      if(rp.error){ formError('altaMsg','No se pudo enviar la propuesta: '+rp.error.message); return; }
+      formOk('altaMsg','Propuesta enviada. Se aplicará cuando Roberto o Ronald la aprueben.');
+      await cargarPropuestas(); updateHeaderVisibility();
+      setTimeout(()=>closeModal(), 1300);
+      return;
+    }
     const {error} = await sb.from('activos').insert(nuevo);
     if(error){ formError('altaMsg','No se pudo guardar: '+error.message); return; }
     formOk('altaMsg','Equipo '+tag+' registrado.');
@@ -2289,15 +2323,23 @@ function renderPreviewTodo(detectadas){
     <div class="modal-head"><h3>Confirmar importación general</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <table class="obs-table"><thead><tr><th>Familia</th><th>Hoja detectada</th><th>Nuevos</th><th>A actualizar</th><th>Sin cambios</th><th>Omitidos (vacío)</th><th>Omitidos (duplicado)</th></tr></thead>
       <tbody>${filas}</tbody></table>
-    ${INFO_IMPORT}
+    ${infoImport()}
     <p style="color:var(--text-low);font-size:12px;margin-top:8px">Total: ${totNuevos} equipo(s) nuevo(s) y ${totCambios} a actualizar en ${detectadas.length} familia(s). Las familias no detectadas en el archivo no se tocan.</p>
     <div class="form-msg hidden" id="previewTodoMsg"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
-      <button type="button" class="btn primary" id="btnConfirmarTodo">Confirmar e importar todo</button></div>
+      <button type="button" class="btn primary" id="btnConfirmarTodo">${(!esAdmin() && esProponente()) ? 'Enviar propuesta' : 'Confirmar e importar todo'}</button></div>
   `);
   $('#btnConfirmarTodo').onclick = async ()=>{
     $('#btnConfirmarTodo').disabled = true;
     try{
+      if(!esAdmin() && esProponente()){
+        const todas = [].concat(...detectadas.map(d=>d.data.resultado));
+        const rp = await proponerImportacion(todas);
+        formOk('previewTodoMsg', rp.vacia ? 'No hay cambios que proponer: todo coincide con el inventario.' : 'Propuesta enviada: '+rp.plan.nuevos.length+' nuevo(s) y '+rp.plan.cambios.length+' a actualizar. Se aplicará cuando Roberto o Ronald la aprueben.');
+        await cargarPropuestas(); updateHeaderVisibility();
+        setTimeout(()=>{ closeModal(); render(); }, 1500);
+        return;
+      }
       let agregados = 0, actualizados = 0;
       for(const d of detectadas){
         const r = await aplicarImportacionActivos(d.data.resultado, []);
@@ -2369,7 +2411,7 @@ function continuarConHoja(familia, sheetName, wb){
   openModal(`
     <div class="modal-head"><h3>${familia}</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <p style="color:var(--good);font-size:12px">Detectamos la hoja "${sheetName}" para ${familia}.</p>
-    <p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.</p>
+    ${infoImport()}
     <div class="form-msg hidden" id="sheetMsg2"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
       <button type="button" class="btn primary" id="btnContinuarAuto">Continuar</button></div>
@@ -2395,7 +2437,7 @@ function renderFixedSheetPick(familia, preseleccion){
     <div class="modal-head"><h3>¿Qué hoja tiene ${familia}?</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     ${preseleccion? '<p style="color:var(--good);font-size:12px">Detectamos una hoja que probablemente es esta.</p>':''}
     <select id="sheetPick" style="width:100%">${opts}</select>
-    <p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.</p>
+    ${infoImport()}
     <div class="form-msg hidden" id="sheetMsg"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
       <button type="button" class="btn primary" id="btnContinuarHoja">Continuar</button></div>
@@ -2525,7 +2567,7 @@ function renderMappingStep(){
     <h3 style="margin-top:16px">Parámetros técnicos (opcional — solo se guardan los que apliquen a la familia de cada equipo)</h3>
     ${techRows}
 
-    <p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.</p>
+    ${infoImport()}
     <div class="form-msg hidden" id="mapMsg"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
       <button type="button" class="btn primary" id="btnContinuarMapeo">Continuar</button></div>
@@ -2708,19 +2750,373 @@ function renderPreviewStep(dataOverride){
     <div class="field-row"><div class="k">Omitidos (TAG vacío)</div><div class="v">${omitidosVacio}</div></div>
     <div class="field-row"><div class="k">Omitidos (TAG duplicado en el archivo)</div><div class="v">${omitidosDuplicado}</div></div>
     ${familiasNuevasACrear.length? `<div class="field-row"><div class="k">Familias nuevas a crear</div><div class="v">${familiasNuevasACrear.join(', ')}</div></div>`:''}
-    ${INFO_IMPORT}
+    ${infoImport()}
     ${noNumericos.length? `<div class="form-msg err">${noNumericos.length} valor(es) no numérico(s) fueron ignorados (revisa el mapeo si no era lo esperado): ${noNumericos.slice(0,5).join('; ')}${noNumericos.length>5?'…':''}</div>`:''}
     <h3 style="margin-top:16px">Vista previa (primeras 8 filas)</h3>
     <table class="obs-table"><thead><tr><th>TAG</th><th>Descripción</th><th>Familia</th><th>Estado</th></tr></thead><tbody>${muestra}</tbody></table>
     <div class="form-msg hidden" id="execMsg"></div>
     <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
-      <button type="button" class="btn primary" id="btnEjecutarImport">Confirmar e importar</button></div>
+      <button type="button" class="btn primary" id="btnEjecutarImport">${(!esAdmin() && esProponente()) ? 'Enviar propuesta' : 'Confirmar e importar'}</button></div>
   `);
   $('#btnEjecutarImport').onclick = ejecutarImportacion;
 }
 
 /* ---------- IMPORTACION SEGURA: agrega nuevos y actualiza existentes, NUNCA borra ---------- */
-const INFO_IMPORT = '<p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.</p>';
+/* =========================================================
+   PROPUESTAS DE CAMBIOS AL INVENTARIO (requieren aprobacion)
+========================================================= */
+function escHtml(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function rolApp(){
+  const u = ST.session && ST.session.user;
+  return (u && u.app_metadata && u.app_metadata.rol_app) || '';
+}
+function esProponente(){ return rolApp()==='proponente'; }
+function fechaHora(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '—';
+  return pad(d.getDate(),2)+'/'+pad(d.getMonth()+1,2)+'/'+d.getFullYear()+' '+pad(d.getHours(),2)+':'+pad(d.getMinutes(),2);
+}
+const TIPO_PROPUESTA = {alta:'Alta de equipo', edicion:'Edición de equipo', importacion:'Importación', baja:'Eliminar equipo'};
+
+async function cargarPropuestas(){
+  if(!ST.session || (!esAdmin() && !esProponente())){ ST.propuestas = []; return; }
+  const {data, error} = await sb.from('propuestas_inventario').select('*').order('propuesto_en', {ascending:false});
+  ST.propuestas = error ? [] : (data||[]);
+}
+
+function actualizarBotonPropuestas(){
+  const b = $('#btnPropuestas');
+  if(!b) return;
+  const visible = !!ST.session && !ST.modoTecnico && (esAdmin() || esProponente());
+  b.style.display = visible ? 'inline-flex' : 'none';
+  if(!visible) return;
+  const email = String(ST.session.user.email||'').toLowerCase();
+  const pend = ST.propuestas.filter(p=>p.estado==='Pendiente' && (esAdmin() || String(p.propuesto_por||'').toLowerCase()===email)).length;
+  b.textContent = 'Propuestas' + (pend ? ' ('+pend+')' : '');
+  b.style.borderColor = (esAdmin() && pend) ? 'var(--warn)' : '';
+}
+
+async function enviarPropuesta(p){
+  return await sb.from('propuestas_inventario').insert({
+    tipo:p.tipo, tag:p.tag||null, familia:p.familia||null, resumen:p.resumen, datos:p.datos||{}, comentario:p.comentario||null
+  }).select().single();
+}
+
+async function proponerImportacion(filas){
+  const {data, error} = await sb.from('activos').select('*');
+  if(error) throw error;
+  const existentes = new Map((data||[]).map(a=>[a.tag, a]));
+  const plan = planificarImportacion(filas, existentes);
+  if(!plan.nuevos.length && !plan.cambios.length) return {vacia:true, plan};
+  const cambios = plan.cambios.map(c=>{
+    const ex = existentes.get(c.tag) || {};
+    const antes = {};
+    Object.keys(c.campos).forEach(k=>{ antes[k] = (ex[k]===undefined ? null : ex[k]); });
+    return {tag:c.tag, campos:c.campos, antes};
+  });
+  const familias = Array.from(new Set((filas||[]).map(f=>f.familia).filter(Boolean)));
+  const etiqueta = familias.length ? familias.join(', ') : 'varias familias';
+  const r = await enviarPropuesta({tipo:'importacion', familia:etiqueta,
+    resumen:'Importación ('+etiqueta+'): '+plan.nuevos.length+' nuevo(s), '+cambios.length+' a actualizar',
+    datos:{nuevos:plan.nuevos, cambios}});
+  if(r.error) throw r.error;
+  return {vacia:false, plan};
+}
+
+function labelCampo(k){
+  const f = IMPORT_FIELDS.find(x=>x.key===k);
+  if(f) return f.label;
+  if(k==='costo_adquisicion') return 'Costo de adquisición';
+  return k;
+}
+function formatValor(v){
+  if(v===null || v===undefined || v==='') return '—';
+  if(typeof v==='boolean') return v ? 'Sí' : 'No';
+  return String(v);
+}
+
+function detallePropuestaHtml(p){
+  const d = p.datos || {};
+  const fila = (k,v)=>'<div class="field-row"><div class="k">'+escHtml(k)+'</div><div class="v">'+escHtml(v)+'</div></div>';
+  if(p.tipo==='alta'){
+    const f = d.fila || {};
+    return Object.keys(f).filter(k=>f[k]!==null && f[k]!=='').map(k=>fila(labelCampo(k), formatValor(f[k]))).join('');
+  }
+  if(p.tipo==='edicion'){
+    const antes = d.antes || {}, campos = d.campos || {};
+    return Object.keys(campos).map(k=>fila(labelCampo(k), formatValor(antes[k])+'  →  '+formatValor(campos[k]))).join('');
+  }
+  if(p.tipo==='baja'){
+    const a = d.antes || {};
+    return fila('Equipo', p.tag||'—') + fila('Descripción', formatValor(a.descripcion)) + fila('Familia', formatValor(a.familia||p.familia)) + fila('Área', formatValor(a.area)) +
+      '<p style="font-size:12px;color:var(--text-low);margin:8px 0 0">Si el equipo tiene inspecciones, observaciones o alertas registradas, la base no permitirá eliminarlo.</p>';
+  }
+  if(p.tipo==='importacion'){
+    const nuevos = d.nuevos || [], cambios = d.cambios || [], MAX = 40;
+    let h = '';
+    if(nuevos.length){
+      h += '<div style="font-size:12px;font-weight:600;margin:6px 0 4px">Equipos nuevos ('+nuevos.length+')</div>';
+      h += nuevos.slice(0,MAX).map(n=>'<div style="font-size:12.5px;padding:2px 0">'+escHtml(n.tag)+' — '+escHtml(n.descripcion||n.nombre_corto||'')+' <span style="color:var(--text-low)">('+escHtml(n.familia||'')+')</span></div>').join('');
+      if(nuevos.length>MAX) h += '<div style="font-size:12px;color:var(--text-low)">… y '+(nuevos.length-MAX)+' más</div>';
+    }
+    if(cambios.length){
+      h += '<div style="font-size:12px;font-weight:600;margin:10px 0 4px">Equipos existentes a actualizar ('+cambios.length+')</div>';
+      h += cambios.slice(0,MAX).map(c=>'<div style="font-size:12.5px;padding:2px 0"><b>'+escHtml(c.tag)+'</b>: '+Object.keys(c.campos||{}).map(k=>escHtml(labelCampo(k))+' '+escHtml(formatValor((c.antes||{})[k]))+' → '+escHtml(formatValor(c.campos[k]))).join('; ')+'</div>').join('');
+      if(cambios.length>MAX) h += '<div style="font-size:12px;color:var(--text-low)">… y '+(cambios.length-MAX)+' más</div>';
+    }
+    return h || '<div style="font-size:12.5px;color:var(--text-low)">Sin detalle.</div>';
+  }
+  return '';
+}
+
+function resumenResultado(r){
+  r = r || {};
+  const partes = [];
+  if(r.agregados) partes.push(r.agregados+' agregado(s)');
+  if(r.actualizados) partes.push(r.actualizados+' actualizado(s)');
+  if(r.eliminados) partes.push(r.eliminados+' eliminado(s)');
+  if(r.omitidos) partes.push(r.omitidos+' omitido(s) (ya no aplicaban)');
+  return partes.length ? partes.join(', ') : 'sin cambios';
+}
+
+function tarjetaPropuesta(p){
+  const card = el('div','panel');
+  card.style.marginBottom = '12px';
+  const pend = p.estado==='Pendiente';
+  const pillCls = p.estado==='Aprobada' ? 'good' : (p.estado==='Rechazada' ? 'bad' : 'warn');
+  card.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'+
+      '<div><span style="font-size:11px;font-weight:700;color:var(--text-low);text-transform:uppercase">'+escHtml(TIPO_PROPUESTA[p.tipo]||p.tipo)+'</span>'+
+      '<div style="font-weight:700">'+escHtml(p.resumen)+'</div></div>'+
+      '<span class="dias-pill '+pillCls+'">'+escHtml(p.estado)+'</span>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--text-low);margin:4px 0">Propuesto por '+escHtml(p.propuesto_por)+' · '+escHtml(fechaHora(p.propuesto_en))+'</div>'+
+    (p.comentario ? '<div style="font-size:12.5px;margin:4px 0"><b>Comentario:</b> '+escHtml(p.comentario)+'</div>' : '')+
+    (!pend ? '<div style="font-size:12px;color:var(--text-mid);margin:4px 0">'+escHtml(p.estado)+' por '+escHtml(p.resuelto_por||'—')+' · '+escHtml(fechaHora(p.resuelto_en))+(p.motivo?' — Motivo: '+escHtml(p.motivo):'')+'</div>' : '')+
+    '<a href="javascript:void(0)" class="detalleToggle" style="font-size:12px">Ver detalle</a>'+
+    '<div class="detalleBox" style="display:none;margin-top:8px">'+detallePropuestaHtml(p)+'</div>'+
+    '<div class="accionesBox"></div>'+
+    '<div class="form-msg hidden msgProp"></div>';
+
+  const msg = card.querySelector('.msgProp');
+  const mostrarMsg = (t, ok)=>{ msg.className = 'form-msg '+(ok?'ok':'err'); msg.textContent = t; };
+  const detalleBox = card.querySelector('.detalleBox');
+  const toggle = card.querySelector('.detalleToggle');
+  toggle.onclick = ()=>{
+    const abierto = detalleBox.style.display !== 'none';
+    detalleBox.style.display = abierto ? 'none' : 'block';
+    toggle.textContent = abierto ? 'Ver detalle' : 'Ocultar detalle';
+  };
+
+  if(pend && esAdmin()){
+    const acc = card.querySelector('.accionesBox');
+    acc.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px';
+    acc.innerHTML = '<button type="button" class="btn primary bAprobar">Aprobar</button>'+
+      '<button type="button" class="btn bRechazar">Rechazar</button>'+
+      '<span class="rechazoBox" style="display:none;flex:1 1 100%;gap:6px">'+
+        '<input type="text" class="inMotivo" placeholder="Motivo (opcional)" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--line)">'+
+        '<button type="button" class="btn bConfRechazo">Confirmar rechazo</button></span>';
+    const bAprobar = acc.querySelector('.bAprobar'), bRechazar = acc.querySelector('.bRechazar');
+    const rechazoBox = acc.querySelector('.rechazoBox'), bConf = acc.querySelector('.bConfRechazo');
+
+    bAprobar.onclick = async ()=>{
+      bAprobar.disabled = true; bRechazar.disabled = true;
+      const {data, error} = await sb.rpc('aprobar_propuesta', {p_id:p.id});
+      if(error){ mostrarMsg('No se pudo aprobar: '+error.message, false); bAprobar.disabled = false; bRechazar.disabled = false; return; }
+      ST.avisoPropuestas = 'Propuesta aprobada: '+resumenResultado(data);
+      try{ await cargarTodo(); await cargarPropuestas(); }catch(e){}
+      render();
+    };
+    bRechazar.onclick = ()=>{ rechazoBox.style.display = rechazoBox.style.display==='none' ? 'flex' : 'none'; };
+    bConf.onclick = async ()=>{
+      bConf.disabled = true;
+      const motivo = acc.querySelector('.inMotivo').value.trim();
+      const {error} = await sb.rpc('rechazar_propuesta', {p_id:p.id, p_motivo: motivo || null});
+      if(error){ mostrarMsg('No se pudo rechazar: '+error.message, false); bConf.disabled = false; return; }
+      ST.avisoPropuestas = 'Propuesta rechazada.';
+      try{ await cargarPropuestas(); }catch(e){}
+      render();
+    };
+  }
+  return card;
+}
+
+function renderPropuestas(app){
+  if(!ST.session || (!esAdmin() && !esProponente())){ go('status'); return; }
+  const crumb = el('div','crumb');
+  const back = el('button', null, '&larr; Estatus general');
+  back.onclick = ()=>go('status');
+  crumb.appendChild(back);
+  app.appendChild(crumb);
+
+  const head = el('div');
+  head.innerHTML = '<h2 class="view-title">Propuestas de cambios al inventario</h2><p class="view-sub">'+
+    (esAdmin() ? 'Revisa y aprueba o rechaza los cambios que proponen Carlos y Mayra. Con que apruebe uno de los administradores basta.'
+               : 'Tus cambios al inventario se aplican cuando Roberto o Ronald los aprueban.')+'</p>';
+  app.appendChild(head);
+
+  if(ST.avisoPropuestas){
+    const av = el('div','form-msg ok');
+    av.textContent = ST.avisoPropuestas;
+    ST.avisoPropuestas = null;
+    app.appendChild(av);
+  }
+
+  const pendientes = ST.propuestas.filter(p=>p.estado==='Pendiente');
+  const resueltas = ST.propuestas.filter(p=>p.estado!=='Pendiente');
+  app.appendChild(el('h3', null, 'Pendientes ('+pendientes.length+')'));
+  if(!pendientes.length) app.appendChild(el('div','empty-msg','No hay propuestas pendientes.'));
+  pendientes.forEach(p=>app.appendChild(tarjetaPropuesta(p)));
+
+  const h2 = el('h3', null, 'Historial');
+  h2.style.marginTop = '24px';
+  app.appendChild(h2);
+  if(!resueltas.length) app.appendChild(el('div','empty-msg','Todavía no hay propuestas resueltas.'));
+  resueltas.slice(0,100).forEach(p=>app.appendChild(tarjetaPropuesta(p)));
+}
+
+const CAMPOS_EDITABLES = [
+  {k:'nombre_corto', l:'Nombre corto', t:'text'},
+  {k:'descripcion', l:'Descripción', t:'text', full:true},
+  {k:'area', l:'Área', t:'text'},
+  {k:'marca', l:'Marca', t:'text'},
+  {k:'modelo', l:'Modelo', t:'text'},
+  {k:'numero_serie', l:'Número de serie', t:'text'},
+  {k:'anio_fabricacion', l:'Año de fabricación', t:'int'},
+  {k:'capacidad_valor', l:'Capacidad (valor)', t:'num'},
+  {k:'capacidad_unidad', l:'Capacidad (unidad)', t:'sel', o:['TR','BTU/h','kW','HP','CFM']},
+  {k:'voltaje', l:'Voltaje (V)', t:'num'},
+  {k:'amperaje', l:'Amperaje (A)', t:'num'},
+  {k:'potencia_kw', l:'Potencia (kW)', t:'num'},
+  {k:'fases', l:'Fases', t:'sel', o:['Trifasico','Monofasico']},
+  {k:'criticidad', l:'Criticidad', t:'sel', o:['Alta','Media','Baja']},
+  {k:'ubicacion_especifica', l:'Ubicación específica', t:'text', full:true},
+  {k:'costo_adquisicion', l:'Costo de adquisición', t:'num'}
+];
+
+function openFormEditarEquipo(tag){
+  const act = ST.activosByTag.get(tag);
+  if(!act) return;
+  const admin = esAdmin();
+  const camposHtml = CAMPOS_EDITABLES.map(c=>{
+    const val = act[c.k]==null ? '' : act[c.k];
+    const cls = c.full ? ' class="full"' : '';
+    if(c.t==='sel'){
+      const opts = c.o.slice();
+      if(val!=='' && opts.indexOf(String(val))===-1) opts.unshift(String(val));
+      return '<div'+cls+'><label>'+c.l+'</label><select id="eq_'+c.k+'"><option value="">—</option>'+
+        opts.map(o=>'<option'+(String(val)===o?' selected':'')+'>'+escHtml(o)+'</option>').join('')+'</select></div>';
+    }
+    const inputType = (c.t==='int' || c.t==='num') ? 'number' : 'text';
+    const step = c.t==='num' ? ' step="any"' : '';
+    return '<div'+cls+'><label>'+c.l+'</label><input id="eq_'+c.k+'" type="'+inputType+'"'+step+' value="'+escHtml(val)+'"></div>';
+  }).join('');
+  openModal(
+    '<div class="modal-head"><h3>'+(admin?'Editar equipo ':'Proponer edición de ')+escHtml(tag)+'</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>'+
+    (admin ? '' : '<p style="color:var(--text-mid);font-size:12.5px;margin:0 0 10px">Los cambios se envían como propuesta y se aplican cuando Roberto o Ronald la aprueban.</p>')+
+    '<form class="form-grid" id="fEditar">'+camposHtml+
+      '<div class="form-msg hidden" id="editMsg"></div>'+
+      '<div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>'+
+      '<button type="submit" class="btn primary">'+(admin?'Guardar cambios':'Enviar propuesta')+'</button></div>'+
+    '</form>');
+  $('#fEditar').onsubmit = async (e)=>{
+    e.preventDefault();
+    const campos = {}, antes = {};
+    for(const c of CAMPOS_EDITABLES){
+      const inp = $('#eq_'+c.k);
+      if(inp.validity && inp.validity.badInput){ formError('editMsg', c.l+': número inválido.'); return; }
+      const raw = inp.value.trim();
+      let nuevo;
+      if(raw===''){ nuevo = null; }
+      else if(c.t==='int'){ nuevo = parseInt(raw,10); if(isNaN(nuevo)){ formError('editMsg', c.l+': número inválido.'); return; } }
+      else if(c.t==='num'){ nuevo = Number(raw); if(isNaN(nuevo)){ formError('editMsg', c.l+': número inválido.'); return; } }
+      else { nuevo = raw; }
+      const actual = (act[c.k]==null || act[c.k]==='') ? null : act[c.k];
+      if(nuevo===null && actual===null) continue;
+      if(nuevo!==null && actual!==null && mismoValor(actual, nuevo)) continue;
+      campos[c.k] = nuevo; antes[c.k] = actual;
+    }
+    if(!Object.keys(campos).length){ formError('editMsg','No hay cambios que guardar.'); return; }
+    if(admin){
+      const {data, error} = await sb.from('activos').update(campos).eq('tag', tag).select('tag');
+      if(error){ formError('editMsg','No se pudo guardar: '+error.message); return; }
+      if(!data || !data.length){ formError('editMsg','No se pudo guardar (sin permiso).'); return; }
+      formOk('editMsg','Cambios guardados.');
+      await recargarYRefrescar();
+      return;
+    }
+    const resumen = 'Edición de '+tag+': '+Object.keys(campos).map(labelCampo).join(', ');
+    const rp = await enviarPropuesta({tipo:'edicion', tag, familia:act.familia, resumen, datos:{campos, antes}});
+    if(rp.error){ formError('editMsg','No se pudo enviar la propuesta: '+rp.error.message); return; }
+    formOk('editMsg','Propuesta enviada. Se aplicará cuando Roberto o Ronald la aprueben.');
+    await cargarPropuestas(); updateHeaderVisibility();
+    setTimeout(()=>closeModal(), 1300);
+  };
+}
+
+function openFormEliminarEquipo(tag){
+  const act = ST.activosByTag.get(tag);
+  if(!act) return;
+  const admin = esAdmin();
+  const nInsp = ST.inspecciones.filter(i=>i.tag===tag).length;
+  const nObs = ST.observaciones.filter(o=>o.tag===tag).length;
+  const nAl = ST.alertas.filter(a=>a.tag===tag).length;
+  const bloqueado = (nInsp + nObs + nAl) > 0;
+  const titulo = escHtml(tag)+(act.descripcion ? ' — '+escHtml(act.descripcion) : '');
+  if(bloqueado){
+    openModal(
+      '<div class="modal-head"><h3>No se puede eliminar</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>'+
+      '<p style="margin:0 0 8px"><b>'+titulo+'</b></p>'+
+      '<div class="form-msg err">Tiene '+nInsp+' inspección(es), '+nObs+' observación(es) y '+nAl+' alerta(s) registradas. Eliminarlo borraría ese historial.</div>'+
+      '<p style="color:var(--text-mid);font-size:12.5px">Si el equipo ya no se usa, cámbialo a <b>Inhabilitado</b> en lugar de eliminarlo.</p>'+
+      '<div class="form-actions"><button type="button" class="btn" onclick="window.__closeModal()">Cerrar</button></div>');
+    return;
+  }
+  openModal(
+    '<div class="modal-head"><h3>'+(admin?'Eliminar equipo':'Proponer eliminar equipo')+'</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>'+
+    '<p style="margin:0 0 8px"><b>'+titulo+'</b></p>'+
+    (admin ? '<p style="color:var(--bad);font-size:12.5px;margin:0 0 10px">Esta acción es definitiva. Para confirmar, escribe el TAG del equipo.</p>'
+           : '<p style="color:var(--text-mid);font-size:12.5px;margin:0 0 10px">Se enviará como propuesta y se eliminará solo si Roberto o Ronald la aprueban.</p>')+
+    '<form class="form-grid" id="fEliminar">'+
+      (admin ? '<div class="full"><label>Escribe '+escHtml(tag)+' para confirmar</label><input id="delTag" autocomplete="off"></div>' : '')+
+      '<div class="full"><label>Motivo'+(admin?' (opcional)':'')+'</label><textarea id="delMotivo"></textarea></div>'+
+      '<div class="form-msg hidden" id="delMsg"></div>'+
+      '<div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>'+
+      '<button type="submit" class="btn primary" style="'+(admin?'background:var(--bad);border-color:var(--bad)':'')+'">'+(admin?'Eliminar definitivamente':'Enviar propuesta')+'</button></div>'+
+    '</form>');
+  $('#fEliminar').onsubmit = async (e)=>{
+    e.preventDefault();
+    const motivo = $('#delMotivo').value.trim();
+    if(admin){
+      if($('#delTag').value.trim() !== tag){ formError('delMsg','El TAG no coincide. No se eliminó nada.'); return; }
+      const {error} = await sb.rpc('eliminar_equipo_admin', {p_tag:tag, p_comentario: motivo || null});
+      if(error){ formError('delMsg','No se pudo eliminar: '+error.message); return; }
+      try{ await cargarTodo(); await cargarPropuestas(); }catch(err){}
+      closeModal();
+      go('status');
+      return;
+    }
+    if(!motivo){ formError('delMsg','Escribe el motivo para que quien apruebe lo entienda.'); return; }
+    const rp = await enviarPropuesta({tipo:'baja', tag, familia:act.familia, resumen:'Eliminar equipo '+tag+(act.descripcion?' — '+act.descripcion:''),
+      datos:{antes:{tag, descripcion:act.descripcion||null, familia:act.familia||null, area:act.area||null, marca:act.marca||null, modelo:act.modelo||null, numero_serie:act.numero_serie||null}}, comentario:motivo});
+    if(rp.error){ formError('delMsg','No se pudo enviar la propuesta: '+rp.error.message); return; }
+    formOk('delMsg','Propuesta enviada. Se eliminará solo si Roberto o Ronald la aprueban.');
+    await cargarPropuestas(); updateHeaderVisibility();
+    setTimeout(()=>closeModal(), 1300);
+  };
+}
+
+
+/* texto informativo de importacion (cambia segun el rol) */
+function infoImport(){
+  const txt = (!esAdmin() && esProponente())
+    ? 'Tus cambios se envían como <b>propuesta</b> y se aplican cuando Roberto o Ronald la aprueben. No se borra nada y el estado de los equipos no se modifica. Las rondas de inspección del Excel no se incluyen en propuestas.'
+    : 'Se agregan los equipos nuevos y se actualizan los datos de los existentes. <b>No se borra nada</b> y el estado actual de cada equipo no se modifica.';
+  return '<p style="color:var(--text-mid);font-size:12.5px;margin:10px 0">'+txt+'</p>';
+}
 const IMPORT_CAMPOS_PROTEGIDOS = ['id','tag','estado','familia','es_critico','fecha_alta','created_at','updated_at'];
 
 function mismoValor(a, b){
@@ -2791,6 +3187,13 @@ function esAdmin(){
 async function ejecutarImportacion(){
   $('#btnEjecutarImport').disabled = true;
   try{
+    if(!esAdmin() && esProponente()){
+      const rp = await proponerImportacion(IMP._preview);
+      formOk('execMsg', rp.vacia ? 'No hay cambios que proponer: todo coincide con el inventario.' : 'Propuesta enviada: '+rp.plan.nuevos.length+' nuevo(s) y '+rp.plan.cambios.length+' a actualizar. Se aplicará cuando Roberto o Ronald la aprueben.');
+      await cargarPropuestas(); updateHeaderVisibility();
+      setTimeout(()=>{ closeModal(); render(); }, 1500);
+      return;
+    }
     const familiasNuevasACrear = Array.from(new Set(Object.entries(IMP.familiaNuevas).filter(([k,v])=>v==='__crear__').map(([k])=>k)));
     for(const nombre of familiasNuevasACrear){
       const maxOrden = ST.familias.reduce((m,f)=>Math.max(m,f.orden||0),0);
@@ -2816,6 +3219,7 @@ async function iniciar(){
   ST.session = session;
   try{
     await cargarTodo();
+    await cargarPropuestas();
   }catch(err){
     app.innerHTML = '<div class="center-card"><h1>No se pudo cargar la información</h1><p>'+err.message+'</p></div>';
     return;
@@ -3281,10 +3685,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
   });
   $('#btnPrint').addEventListener('click', ()=>window.print());
   $('#btnRegistrar').addEventListener('click', openCaptureMenu);
+  $('#btnPropuestas').addEventListener('click', async ()=>{ await cargarPropuestas(); go('propuestas'); });
   $('#btnLogin').addEventListener('click', openLoginModal);
   $('#btnLogout').addEventListener('click', async ()=>{
     await sb.auth.signOut();
     ST.session=null;
+    ST.propuestas=[];
     if(window.__FORZAR_MODO_TECNICO__){
       ST.modoTecnico = true;
       go('tecnico-login');
