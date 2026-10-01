@@ -277,10 +277,19 @@ const UMBRAL_VERDE = 0.95, UMBRAL_AMBAR = 0.85;
    cómo se llaman en pantalla, y cuál es el "parámetro clave" a destacar. */
 const FAMILY_FIELDS = {
   "Chiller": {
-    key: "temperatura_agua", keyLabel: "Temp. de agua (prom.)", keyUnit: "°C",
+    key: "temp_agua_ingreso", keyLabel: "Temp. ingreso de agua (prom.)", keyUnit: "°C",
+    estadoLabel: "Estado de Chiller",
+    actualizaEstadoActivo: true,
     fields: [
-      { key: "temperatura_agua", label: "Temperatura de agua", synonyms: ["temperaturadeagua","temperaturaagua"] },
-      { key: "dureza_agua", label: "Dureza del agua", synonyms: ["durezadelagua","durezaagua"] }
+      { key: "temp_agua_ingreso", label: "Temperatura de ingreso de agua", tipo: "numerico", unidad: "°C", informativo: true, min: null, max: null, riesgo: null },
+      { key: "temp_agua_salida", label: "Temperatura de salida de agua", tipo: "numerico", unidad: "°C", informativo: true, min: null, max: null, riesgo: null },
+      { key: "presion_entrada", label: "Presión de entrada de agua", tipo: "numerico", unidad: "PSI", informativo: true, min: null, max: null, riesgo: null },
+      { key: "presion_salida", label: "Presión de salida de agua", tipo: "numerico", unidad: "PSI", informativo: true, min: null, max: null, riesgo: null },
+      { key: "capacidad_trabajo", label: "Capacidad de trabajo del chiller", tipo: "numerico", unidad: "%", informativo: true, min: null, max: null, limiteMin: 0, limiteMax: 100, riesgo: null },
+      { key: "bomba_primaria_1", label: "Bombas primarias — Bomba 1", tipo: "select", opciones: ["Operativo","Inoperativo"], riesgo: null },
+      { key: "bomba_primaria_2", label: "Bombas primarias — Bomba 2", tipo: "select", opciones: ["Operativo","Inoperativo"], riesgo: null },
+      { key: "bomba_secundaria_1", label: "Bombas secundarias — Bomba 1", tipo: "select", opciones: ["Operativo","Inoperativo"], riesgo: null },
+      { key: "bomba_secundaria_2", label: "Bombas secundarias — Bomba 2", tipo: "select", opciones: ["Operativo","Inoperativo"], riesgo: null }
     ]
   },
   "Compresores": {
@@ -3451,7 +3460,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
         : (f.alertaSoloSiSupera ? `${f.label} (${f.unidad}) — normal: ${rangoTxt} · alerta si supera ${f.max}` : `${f.label} (${f.unidad}) — normal: ${rangoTxt}`);
       return `<div class="full"${f.dependeDe ? ` id="campoWrap_${f.key}"` : ''}>
         <label>${etiqueta}</label>
-        <input id="campo_${f.key}" type="number" step="any" value="${valPrev.replace(/"/g,'&quot;')}">
+        <input id="campo_${f.key}" type="number" step="any"${f.limiteMin!=null?' min="'+f.limiteMin+'"':''}${f.limiteMax!=null?' max="'+f.limiteMax+'"':''} value="${valPrev.replace(/"/g,'&quot;')}">
       </div>`;
     }
     if(f.tipo==='select'){
@@ -3485,7 +3494,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
         </select>
       </div>
 
-      <div><label>Estado operativo</label>
+      <div><label>${cfg.estadoLabel || 'Estado operativo'}</label>
         <select id="tEstadoOp">${(cfg.estados||['Operativo','Inoperativo']).map((e,ix)=>`<option${(vp.estadoOp===e||(!vp.estadoOp&&ix===0))?' selected':''}>${e}</option>`).join('')}</select>
       </div>
       <div><label>Modo de funcionamiento</label>
@@ -3527,6 +3536,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
     const detalles = {};
     const detalles2 = {};
     let faltaDetalle = null;
+    let fueraDeTope = null;
     cfg.fields.forEach(f=>{
       if(f.dependeDe){
         const dep = $('#campo_'+f.dependeDe);
@@ -3534,6 +3544,9 @@ function renderTecnicoForm(app, tag, valoresPrevios){
       }
       const v = $('#campo_'+f.key).value.trim();
       if(v) datosAdicionales[f.key] = v;
+      if(v && f.tipo==='numerico' && ((f.limiteMin!=null && Number(v) < f.limiteMin) || (f.limiteMax!=null && Number(v) > f.limiteMax)) && !fueraDeTope){
+        fueraDeTope = f.label+' debe estar entre '+(f.limiteMin!=null?f.limiteMin:'-∞')+' y '+(f.limiteMax!=null?f.limiteMax:'∞')+' '+f.unidad+'.';
+      }
       if(f.tipo==='select' && v===f.opcionProblema){
         const d = $('#detalle_'+f.key);
         if(d && d.value.trim()) detalles[f.key] = d.value.trim();
@@ -3543,6 +3556,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
       }
     });
     if(faltaDetalle){ formError('tecnicoFormMsg','Ingresa el '+faltaDetalle.toLowerCase()+'.'); return; }
+    if(fueraDeTope){ formError('tecnicoFormMsg', fueraDeTope); return; }
     const valores = {
       quien,
       estadoOp: $('#tEstadoOp').value,
@@ -3604,7 +3618,7 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
   panel.innerHTML = `
     <div class="field-row"><div class="k">¿Quién registra?</div><div class="v">${valores.quien}</div></div>
     <div class="field-row"><div class="k">Día</div><div class="v">${valores.dia}</div></div>
-    <div class="field-row"><div class="k">Estado operativo</div><div class="v">${valores.estadoOp}</div></div>
+    <div class="field-row"><div class="k">${cfg.estadoLabel || 'Estado operativo'}</div><div class="v">${valores.estadoOp}</div></div>
     <div class="field-row"><div class="k">Modo de funcionamiento</div><div class="v">${valores.modo}</div></div>
     ${camposEspecificosHtml}
     <div class="field-row"><div class="k">Observación</div><div class="v">${valores.observacion||'—'}</div></div>
