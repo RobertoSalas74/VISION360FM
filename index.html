@@ -3706,11 +3706,38 @@ function renderTecnicoForm(app, tag, valoresPrevios){
   };
 }
 
+/* Aviso (no bloquea): si el equipo ya tiene rondas hoy, se le dice al tecnico antes de guardar otra */
+async function avisarRondaDelDia(tag, cont){
+  try{
+    const hoyISO = isoDateInput(todayLocal());
+    const {data, error} = await sb.from('inspecciones').select('registrado_por, created_at').eq('tag', tag).eq('fecha_inspeccion', hoyISO).order('created_at', {ascending:false});
+    if(error || !data || !data.length) return;
+    if(!cont.isConnected) return;
+    const ult = data[0];
+    const d = new Date(ult.created_at);
+    const hora = isNaN(d.getTime()) ? '' : ' a las '+pad(d.getHours(),2)+':'+pad(d.getMinutes(),2);
+    const quien = ult.registrado_por ? ' por '+escHtml(ult.registrado_por) : '';
+    const texto = data.length===1
+      ? 'Este equipo ya tiene una ronda registrada hoy'+hora+quien+'.'
+      : 'Este equipo ya tiene '+data.length+' rondas registradas hoy; la última'+hora+quien+'.';
+    cont.style.cssText = 'background:var(--warn-bg);border:1px solid var(--warn);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text-hi)';
+    cont.innerHTML = '<b>Revisa antes de guardar:</b> '+texto+' ¿Seguro que quieres guardar otra?';
+  }catch(e){}
+}
+
 function renderResumenTecnico(app, act, tag, valores, cfg){
   app.innerHTML = '';
   const head = el('div');
   head.innerHTML = `<h2 class="view-title">Confirmar registro</h2><p class="view-sub">${displayName(act)} — ${act.area||''} — ${valores.dia}</p>`;
   app.appendChild(head);
+
+  const instr = el('div');
+  instr.style.cssText = 'background:var(--bg-page);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text-mid)';
+  instr.innerHTML = 'Revisa los datos. Si algo está mal, pulsa <b>Editar</b>. Si todo está correcto, pulsa <b>Confirmar y guardar</b>.';
+  app.appendChild(instr);
+  const avisoRonda = el('div');
+  app.appendChild(avisoRonda);
+  avisarRondaDelDia(tag, avisoRonda);
 
   const alarmas = [];
   cfg.fields.forEach(f=>{
