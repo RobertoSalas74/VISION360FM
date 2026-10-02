@@ -848,8 +848,37 @@ function construirNavFecha(tipo, fechaRef, onCambiar){
   return wrap;
 }
 
+/* ---------- Enlaces desde el panel de Actividad hacia la ficha del equipo ---------- */
+function abrirFichaDesdePanel(tag){
+  const origen = Object.assign({}, ST.view);
+  delete origen.desdeActividad; delete origen.restaurarActividad;
+  go('equipo', {tag: tag, desdeActividad: origen});
+}
+function volverAActividad(){
+  const o = ST.view.desdeActividad;
+  if(!o){ return false; }
+  go(o.screen, Object.assign({}, o, {restaurarActividad:true}));
+  return true;
+}
+/* Una sola escucha por contenedor: cualquier elemento con data-tag lleva a la ficha de ese equipo */
+function activarEnlacesEquipo(contenedor){
+  contenedor.addEventListener('click', (e)=>{
+    const n = e.target.closest('[data-tag]');
+    if(n && contenedor.contains(n)) abrirFichaDesdePanel(n.dataset.tag);
+  });
+}
+function filaEquipoEnlace(a, derecha){
+  return '<div data-tag="'+escHtml(a.tag)+'" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer">'+
+    '<span>'+escHtml(displayName(a))+' — '+escHtml(a.area||'')+'</span>'+
+    '<span style="color:var(--text-low);white-space:nowrap">'+(derecha ? escHtml(derecha)+'  ' : '')+'&rarr;</span></div>';
+}
+function recordarVistaActividad(fam, tab, fechaRef){
+  ST.vistaActividad = {fam: fam, tab: tab, fecha: isoDateInput(fechaRef)};
+}
+
 function construirPanelDia(cont, fam, eq, fechaRef){
   fechaRef = fechaRef || todayLocal();
+  recordarVistaActividad(fam, 'dia', fechaRef);
   const fechaStr = isoDateInput(fechaRef);
   const tagsFam = new Set(eq.map(a=>a.tag));
 
@@ -880,23 +909,20 @@ function construirPanelDia(cont, fam, eq, fechaRef){
   const detalle = el('div');
   detalle.id = 'diaDetalle';
   panel.appendChild(detalle);
+  activarEnlacesEquipo(detalle);
 
   let seccionAbierta = null;
   function cerrarSeccion(){ seccionAbierta=null; detalle.innerHTML=''; }
   function mostrarCobertura(){
-    const faltantes = eq.filter(a=>!tagsInspeccionados.has(a.tag));
-    const inspeccionados = eq.filter(a=>tagsInspeccionados.has(a.tag));
+    const inspeccionados = eq.filter(a=>tagsInspeccionados.has(a.tag)).sort((x,y)=>displayName(x).localeCompare(displayName(y),'es',{numeric:true}));
     detalle.innerHTML = '';
+    if(!inspeccionados.length){ detalle.appendChild(el('div','empty-msg','Ningún equipo inspeccionado ese día.')); return; }
     const wrap = el('div');
     wrap.style.cssText = 'margin-top:6px';
-    if(inspeccionados.length){
-      wrap.innerHTML += `<div style="font-size:11px;font-weight:600;color:var(--good);margin-bottom:4px">✓ Inspeccionados (${inspeccionados.length})</div>`;
-      wrap.innerHTML += inspeccionados.map(a=>`<div style="font-size:12.5px;padding:3px 0">${displayName(a)} — ${a.area||''}</div>`).join('');
-    }
-    if(faltantes.length){
-      wrap.innerHTML += `<div style="font-size:11px;font-weight:600;color:var(--bad);margin:10px 0 4px">✗ Sin inspección (${faltantes.length})</div>`;
-      wrap.innerHTML += faltantes.map(a=>`<div style="font-size:12.5px;padding:3px 0">${displayName(a)} — ${a.area||''}</div>`).join('');
-    }
+    wrap.innerHTML = inspeccionados.map(a=>{
+      const n = inspHoy.filter(i=>i.tag===a.tag).length;
+      return filaEquipoEnlace(a, n>1 ? n+' rondas' : '');
+    }).join('');
     detalle.appendChild(wrap);
   }
   function mostrarAlertas(){
@@ -913,7 +939,7 @@ function construirPanelDia(cont, fam, eq, fechaRef){
       card.style.cssText = 'border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px';
       card.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <div style="font-weight:700">${act?displayName(act):a.tag}</div>
+          <div data-tag="${escHtml(a.tag)}" style="font-weight:700;cursor:pointer;text-decoration:underline">${act?displayName(act):a.tag}</div>
           <span class="dias-pill ${cerrada?'good':'bad'}">${cerrada?'Cerrada':'Pendiente'}</span>
         </div>
         <div style="font-size:12px;color:var(--text-low)">${act?act.area||'':''}</div>
@@ -1023,7 +1049,8 @@ function construirPanelPeriodo(cont, fam, eq, fechaInicio, fechaFin, diasEsperad
     c.innerHTML = `<div style="font-size:20px;font-weight:700;color:${color||'var(--text-hi)'}">${valor}</div><div style="font-size:10.5px;color:var(--text-mid);font-weight:600">${label}</div>`;
     return c;
   };
-  const cajaConsistencia = mk(equiposConsistentes+' de '+eq.length, 'Inspeccionados todos los días', 'var(--good)');
+  const tagsInspPeriodo = new Set(inspPeriodo.map(i=>i.tag));
+  const cajaConsistencia = mk(tagsInspPeriodo.size+' de '+eq.length, 'Equipos inspeccionados', 'var(--good)');
   const cajaParametro = mk(rankingParametros.length ? rankingParametros[0].label : '—', 'Parámetro que más falla', 'var(--warn)');
   const cajaAbiertas = mk(alertasViejas.length, 'Alertas abiertas '+umbralAbiertos+'+ días', alertasViejas.length?'var(--bad)':'var(--good)');
   const cajaTiempo = mk(tiempoProm!=null?formatDuracion(tiempoProm):'—', 'Tiempo prom. de resolución', 'var(--text-hi)');
@@ -1032,16 +1059,18 @@ function construirPanelPeriodo(cont, fam, eq, fechaInicio, fechaFin, diasEsperad
 
   const detalle = el('div');
   panel.appendChild(detalle);
+  activarEnlacesEquipo(detalle);
 
   let abierto = null;
   function cerrar(){ abierto=null; detalle.innerHTML=''; }
   function verConsistencia(){
     detalle.innerHTML = '';
+    const lista = eq.filter(a=>tagsInspPeriodo.has(a.tag)).sort((x,y)=>displayName(x).localeCompare(displayName(y),'es',{numeric:true}));
+    if(!lista.length){ detalle.appendChild(el('div','empty-msg','Ningún equipo inspeccionado en este período.')); return; }
     const wrap = el('div');
-    wrap.innerHTML = eq.map(a=>{
-      const n = diasPorEquipo[a.tag].size;
-      const color = n>=diasEsperados ? 'var(--good)' : (n===0 ? 'var(--bad)' : 'var(--warn)');
-      return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${displayName(a)} — ${a.area||''}</span><span style="color:${color};font-weight:600">${n} de ${diasEsperados} días</span></div>`;
+    wrap.innerHTML = lista.map(a=>{
+      const n = inspPeriodo.filter(i=>i.tag===a.tag).length;
+      return filaEquipoEnlace(a, n+(n===1 ? ' ronda' : ' rondas'));
     }).join('');
     detalle.appendChild(wrap);
   }
@@ -1059,7 +1088,7 @@ function construirPanelPeriodo(cont, fam, eq, fechaInicio, fechaFin, diasEsperad
     wrap.innerHTML = alertasViejas.map(a=>{
       const act = ST.activosByTag.get(a.tag);
       return `<div style="border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin-bottom:6px">
-        <div style="display:flex;justify-content:space-between"><span style="font-weight:700">${act?displayName(act):a.tag}</span><span style="color:var(--bad);font-weight:700">${a.diasAbierta} días</span></div>
+        <div style="display:flex;justify-content:space-between"><span data-tag="${escHtml(a.tag)}" style="font-weight:700;cursor:pointer;text-decoration:underline">${act?displayName(act):a.tag}</span><span style="color:var(--bad);font-weight:700">${a.diasAbierta} días</span></div>
         <div style="font-size:12px;color:var(--text-mid)">${a.parametro_label}: ${a.valor}</div>
       </div>`;
     }).join('');
@@ -1072,7 +1101,7 @@ function construirPanelPeriodo(cont, fam, eq, fechaInicio, fechaFin, diasEsperad
     wrap.innerHTML = cerradasPeriodo.map(a=>{
       const act = ST.activosByTag.get(a.tag);
       const dur = formatDuracion(new Date(a.fecha_cierre)-new Date(a.fecha_deteccion));
-      return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>${act?displayName(act):a.tag} — ${a.parametro_label}</span><span style="font-weight:600">${dur}</span></div>`;
+      return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span><span data-tag="${escHtml(a.tag)}" style="cursor:pointer;text-decoration:underline">${act?displayName(act):a.tag}</span> — ${a.parametro_label}</span><span style="font-weight:600">${dur}</span></div>`;
     }).join('');
     detalle.appendChild(wrap);
   }
@@ -1084,6 +1113,7 @@ function construirPanelPeriodo(cont, fam, eq, fechaInicio, fechaFin, diasEsperad
 
 function construirPanelSemana(cont, fam, eq, fechaRef){
   fechaRef = fechaRef || todayLocal();
+  recordarVistaActividad(fam, 'semana', fechaRef);
   const hoy = todayLocal();
   const lunes = inicioSemana(fechaRef);
   const finSemana = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate()+6);
@@ -1096,6 +1126,7 @@ function construirPanelSemana(cont, fam, eq, fechaRef){
 
 function construirPanelMes(cont, fam, eq, fechaRef){
   fechaRef = fechaRef || todayLocal();
+  recordarVistaActividad(fam, 'mes', fechaRef);
   const hoy = todayLocal();
   const inicio = new Date(fechaRef.getFullYear(), fechaRef.getMonth(), 1);
   const fin = new Date(fechaRef.getFullYear(), fechaRef.getMonth()+1, 0);
@@ -1109,6 +1140,7 @@ function construirPanelMes(cont, fam, eq, fechaRef){
 
 function construirPanelAnio(cont, fam, eq, fechaRef){
   fechaRef = fechaRef || todayLocal();
+  recordarVistaActividad(fam, 'anio', fechaRef);
   const hoy = todayLocal();
   const inicio = new Date(fechaRef.getFullYear(), 0, 1);
   const fin = new Date(fechaRef.getFullYear(), 11, 31);
@@ -1134,6 +1166,12 @@ function renderPanelActividad(app, fam){
 
   const TABS = [{id:'dia',label:'Día'},{id:'semana',label:'Semana'},{id:'mes',label:'Mes'},{id:'anio',label:'Año'}];
   let activa = 'dia';
+  let fechaRestaurar = null;
+  const vr = ST.vistaActividad;
+  if(ST.view && ST.view.restaurarActividad && vr && vr.fam===fam){
+    activa = vr.tab;
+    fechaRestaurar = new Date(vr.fecha+'T00:00:00');
+  }
 
   function pintarTabs(){
     tabs.innerHTML = '';
@@ -1150,10 +1188,11 @@ function renderPanelActividad(app, fam){
   }
   function pintarContenido(){
     contenido.innerHTML = '';
-    if(activa==='dia') construirPanelDia(contenido, fam, eq);
-    else if(activa==='semana') construirPanelSemana(contenido, fam, eq);
-    else if(activa==='mes') construirPanelMes(contenido, fam, eq);
-    else if(activa==='anio') construirPanelAnio(contenido, fam, eq);
+    const f0 = fechaRestaurar; fechaRestaurar = null;
+    if(activa==='dia') construirPanelDia(contenido, fam, eq, f0 || undefined);
+    else if(activa==='semana') construirPanelSemana(contenido, fam, eq, f0 || undefined);
+    else if(activa==='mes') construirPanelMes(contenido, fam, eq, f0 || undefined);
+    else if(activa==='anio') construirPanelAnio(contenido, fam, eq, f0 || undefined);
 
   }
 
@@ -1348,8 +1387,9 @@ function renderEquipo(app, tag){
   const act = ST.activosByTag.get(tag);
   if(!act){ go('status'); return; }
   const crumb = el('div','crumb');
-  const volverA = ST.view.fromArea ? {label:ST.view.fromArea, action:()=>go('familia-area-detail',{familia:ST.view.fromAreaFamilia, area:ST.view.fromArea})}
-                                              : {label:act.familia, action:()=>go('family',{family:act.familia})};
+  const volverA = ST.view.desdeActividad ? {label:'Volver a Actividad', action:()=>volverAActividad()}
+                                         : (ST.view.fromArea ? {label:ST.view.fromArea, action:()=>go('familia-area-detail',{familia:ST.view.fromAreaFamilia, area:ST.view.fromArea})}
+                                              : {label:act.familia, action:()=>go('family',{family:act.familia})});
   const back = el('button',null,'&larr; '+volverA.label);
   back.onclick = volverA.action;
   crumb.appendChild(back);
@@ -1418,7 +1458,7 @@ function renderEquipo(app, tag){
   }
   app.appendChild(tlPanel);
 
-  const insEq = ST.inspecciones.filter(i=>i.tag===tag).slice().sort((a,b)=>b.fecha_inspeccion_d-a.fecha_inspeccion_d);
+  const insEq = ST.inspecciones.filter(i=>i.tag===tag).slice().sort((a,b)=>(b.fecha_inspeccion_d-a.fecha_inspeccion_d) || (new Date(b.created_at||0)-new Date(a.created_at||0)));
   if(insEq.length){
     const insPanel = el('div','panel');
     insPanel.innerHTML = '<h3>Historial de rondas de inspección</h3><p style="font-size:12px;color:var(--text-low);margin:-6px 0 10px">Click en una fila para ver el detalle</p>';
@@ -1453,6 +1493,7 @@ function renderEquipo(app, tag){
         }
       });
       tdDetalle.innerHTML = `
+        <div class="field-row"><div class="k">Registrado por</div><div class="v">${escHtml(i.registrado_por||'—')}</div></div>
         ${i.observacion? `<div class="field-row"><div class="k">Observación</div><div class="v">${i.observacion}</div></div>`:''}
         ${camposHtml || '<div style="font-size:12px;color:var(--text-low)">Sin parámetros adicionales registrados.</div>'}
       `;
@@ -3814,6 +3855,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(e.key==='Escape'){
       if($('#modalRoot').innerHTML){ closeModal(); return; }
       if(ST.view.screen==='equipo'){
+        if(ST.view.desdeActividad){ volverAActividad(); return; }
         if(ST.view.fromArea){ go('familia-area-detail',{familia:ST.view.fromAreaFamilia, area:ST.view.fromArea}); return; }
         const a=ST.activosByTag.get(ST.view.tag); go('family',{family:a?a.familia:ST.familyOrder[0]}); return;
       }
