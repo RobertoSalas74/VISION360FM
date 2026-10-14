@@ -946,16 +946,16 @@ function construirPanelDia(cont, fam, eq, fechaRef){
           <span class="dias-pill ${cerrada?'good':'bad'}">${cerrada?'Cerrada':'Pendiente'}</span>
         </div>
         <div style="font-size:12px;color:var(--text-low)">${act?act.area||'':''}</div>
-        <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:${a.severidad==='Media'?'var(--warn)':'var(--bad)'}">${a.valor}</div></div>
-        ${a.parametro_key==='presenta_alarma' ? (a.descripcion ? `<div class="field-row"><div class="k">Descripción de la alarma</div><div class="v">${a.descripcion}</div></div>` : (ST.session ? `
+        <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:${a.severidad==='Media'?'var(--warn)':'var(--bad)'}">${escHtml(a.valor)}</div></div>
+        ${a.parametro_key==='presenta_alarma' ? (a.descripcion ? `<div class="field-row"><div class="k">Descripción de la alarma</div><div class="v">${escHtml(a.descripcion)}</div></div>` : (ST.session ? `
             <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
               <input type="text" id="desc_${a.id}" placeholder="Descripción de la alarma" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--line)">
               <button type="button" class="btn" id="btnDesc_${a.id}" style="padding:6px 10px">Guardar</button>
             </div>
             <div class="form-msg hidden" id="msgDesc_${a.id}" style="margin-top:4px"></div>` : '')) : ''}
         ${cerrada ? `
-          <div class="field-row"><div class="k">Medida correctiva</div><div class="v">${a.medida_correctiva||'—'}</div></div>
-          <div class="field-row"><div class="k">Cerrado por</div><div class="v">${a.cerrado_por||'—'}</div></div>
+          <div class="field-row"><div class="k">Medida correctiva</div><div class="v">${escHtml(a.medida_correctiva||'—')}</div></div>
+          <div class="field-row"><div class="k">Cerrado por</div><div class="v">${escHtml(a.cerrado_por||'—')}</div></div>
           <div class="field-row"><div class="k">Tiempo de resolución</div><div class="v">${dur}</div></div>
           ${a.costo!=null ? `<div class="field-row"><div class="k">Costo</div><div class="v">${fmtMoney(a.costo)}</div></div>` : `
             <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
@@ -1490,16 +1490,22 @@ function renderEquipo(app, tag){
         const ev = evaluarCampo(f, v);
         const fuera = ev && ev.fuera;
         const colorEstilo = fuera ? ('color:'+(ev.severidad==='Media'?'var(--warn)':'var(--bad)')+';font-weight:700') : '';
-        camposHtml += `<div class="field-row"><div class="k">${f.label}</div><div class="v" style="${colorEstilo}">${v}${detalle?' ('+detalle+')':''}${detalle2?' — '+detalle2:''}${fuera?' ⚠':''}</div></div>`;
+        camposHtml += `<div class="field-row"><div class="k">${f.label}</div><div class="v" style="${colorEstilo}">${escHtml(v)}${detalle?' ('+escHtml(detalle)+')':''}${detalle2?' — '+escHtml(detalle2):''}${fuera?' ⚠':''}</div></div>`;
         if(fuera && ev.riesgo){
           camposHtml += `<div style="font-size:11.5px;color:var(--bad);margin:-4px 0 6px 4px">Riesgo: ${ev.riesgo}</div>`;
         }
       });
       tdDetalle.innerHTML = `
         <div class="field-row"><div class="k">Registrado por</div><div class="v">${escHtml(i.registrado_por||'—')}</div></div>
-        ${i.observacion? `<div class="field-row"><div class="k">Observación</div><div class="v">${i.observacion}</div></div>`:''}
+        ${i.observacion? `<div class="field-row"><div class="k">Observación</div><div class="v">${escHtml(i.observacion)}</div></div>`:''}
         ${camposHtml || '<div style="font-size:12px;color:var(--text-low)">Sin parámetros adicionales registrados.</div>'}
       `;
+      if(esAdmin() && !ST.modoTecnico){
+        const bElim = el('button', null, 'Eliminar esta ronda');
+        bElim.type = 'button'; bElim.className = 'btn'; bElim.style.cssText = 'margin-top:10px;color:var(--bad)';
+        bElim.onclick = (ev)=>{ ev.stopPropagation(); openFormEliminarRonda(i); };
+        tdDetalle.appendChild(bElim);
+      }
       trDetalle.appendChild(tdDetalle);
 
       tr.onclick = ()=>{
@@ -3110,6 +3116,40 @@ function openFormEditarEquipo(tag){
   };
 }
 
+function openFormEliminarRonda(ins){
+  const act = ST.activosByTag.get(ins.tag);
+  const alertas = ST.alertas.filter(a=>a.inspeccion_id===ins.id);
+  const cerradas = alertas.filter(a=>a.estado==='Cerrada').length;
+  const pend = alertas.length - cerradas;
+  const resumen = '<div class="field-row"><div class="k">Equipo</div><div class="v">'+escHtml(act ? displayName(act) : ins.tag)+'</div></div>'+
+    '<div class="field-row"><div class="k">Fecha y hora</div><div class="v">'+escHtml(fechaHora(ins.created_at))+'</div></div>'+
+    '<div class="field-row"><div class="k">Registrado por</div><div class="v">'+escHtml(ins.registrado_por||'—')+'</div></div>'+
+    '<div class="field-row"><div class="k">Resultado</div><div class="v">'+escHtml(ins.resultado_check||'—')+'</div></div>'+
+    (ins.observacion ? '<div class="field-row"><div class="k">Observación</div><div class="v">'+escHtml(ins.observacion)+'</div></div>' : '');
+  const cerrar = '<button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button>';
+  if(cerradas>0){
+    openModal('<div class="modal-head"><h3>No se puede eliminar</h3>'+cerrar+'</div>'+resumen+
+      '<div class="form-msg err" style="margin-top:10px">Tiene '+cerradas+' alerta(s) ya cerrada(s) con medida correctiva. Eliminar la ronda borraría ese trabajo.</div>'+
+      '<div class="form-actions"><button type="button" class="btn" onclick="window.__closeModal()">Cerrar</button></div>');
+    return;
+  }
+  openModal('<div class="modal-head"><h3>Eliminar esta ronda</h3>'+cerrar+'</div>'+resumen+
+    (pend ? '<p style="font-size:12.5px;margin:10px 0 0">También se eliminará(n) '+pend+' alerta(s) pendiente(s) que nació(naron) de esta ronda.</p>' : '')+
+    '<p style="color:var(--bad);font-size:12.5px;margin:8px 0 10px">La ronda deja de contarse. Se guarda una copia en la papelera.</p>'+
+    '<form class="form-grid" id="fEliminarRonda"><div class="full"><label>Motivo</label><input id="rondaMotivo" value="Registro duplicado"></div>'+
+    '<div class="form-msg hidden" id="rondaMsg"></div>'+
+    '<div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>'+
+    '<button type="submit" class="btn primary" style="background:var(--bad);border-color:var(--bad)">Eliminar ronda</button></div></form>');
+  $('#fEliminarRonda').onsubmit = async (e)=>{
+    e.preventDefault();
+    const bs = e.target.querySelector('button[type=submit]'); bs.disabled = true;
+    const {error} = await sb.rpc('eliminar_ronda_admin', {p_id:ins.id, p_motivo:$('#rondaMotivo').value.trim() || null});
+    if(error){ formError('rondaMsg','No se pudo eliminar: '+error.message); bs.disabled = false; return; }
+    try{ await cargarTodo(); }catch(err){}
+    closeModal(); render();
+  };
+}
+
 function openFormEliminarEquipo(tag){
   const act = ST.activosByTag.get(tag);
   if(!act) return;
@@ -3376,7 +3416,7 @@ function renderTecnicoAlertas(app){
       <div style="font-weight:700">${act?displayName(act):a.tag}</div>
       <div style="font-size:12px;color:var(--text-low);margin-bottom:8px">${act?act.area||'':''} — ${fechaTxt}</div>
       <div class="field-row"><div class="k">${a.parametro_label}</div><div class="v" style="color:${a.severidad==='Media'?'var(--warn)':'var(--bad)'};font-weight:700">${a.valor}</div></div>
-      ${a.descripcion?`<div class="field-row"><div class="k">Descripción</div><div class="v">${a.descripcion}</div></div>`:''}
+      ${a.descripcion?`<div class="field-row"><div class="k">Descripción</div><div class="v">${escHtml(a.descripcion)}</div></div>`:''}
       ${a.riesgo?`<div style="font-size:11.5px;color:var(--bad);margin:2px 0 10px">Riesgo: ${a.riesgo}</div>`:'<div style="margin-bottom:10px"></div>'}
       <label>¿Quién cierra esta alerta?</label>
       <select id="quienCierra_${a.id}">
