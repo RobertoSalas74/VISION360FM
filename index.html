@@ -1414,7 +1414,7 @@ function renderGraficosFallas(app, fam){
     const lunes0 = new Date(lr.getFullYear(), lr.getMonth(), lr.getDate() - (NSEM-1)*7);
     const D = calcularFallasSemanas(fam, lunes0, NSEM);
     const rango = ddmm(lunes0)+' – '+ddmm(D.fin);
-    if(!D.params.some(p=>p.key===sel)) sel = D.params.length ? D.params[0].key : null;
+    if(!D.params.some(p=>p.key===sel)) sel = null;
 
     /* ---------- Gráfico 1 ---------- */
     panelA.innerHTML = '';
@@ -1485,15 +1485,16 @@ function renderGraficosFallas(app, fam){
     lista.innerHTML = D.params.map(p=>{
       const pct = Math.round(p.total/maxP*100);
       const activo = p.key===sel;
-      return '<div class="gfRow" data-k="'+p.key+'" style="display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr) 40px;align-items:center;gap:14px;padding:6px 4px;cursor:pointer;opacity:'+(activo?1:0.4)+'">'+
+      return '<div class="gfRow" data-k="'+p.key+'" style="display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr) 40px;align-items:center;gap:14px;padding:6px 4px;cursor:pointer;opacity:'+((sel===null||activo)?1:0.4)+'">'+
         '<div style="font-size:15px;font-weight:600;color:var(--text-hi)">'+escHtml(p.label)+'</div>'+
         '<div style="height:22px;background:var(--bg-page);border-radius:4px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+p.color+';border-radius:4px"></div></div>'+
         '<div style="font-size:16px;font-weight:700;color:var(--text-hi)">'+p.total+'</div></div>';
     }).join('');
-    lista.querySelectorAll('.gfRow').forEach(r=>{ r.onclick = ()=>{ sel = r.dataset.k; pintar(); }; });
+    lista.querySelectorAll('.gfRow').forEach(r=>{ r.onclick = ()=>{ sel = (sel===r.dataset.k) ? null : r.dataset.k; pintar(); }; });
     panelB.appendChild(lista);
 
     const p = D.params.find(x=>x.key===sel);
+    if(!p) return;
     const det = el('div');
     det.style.cssText = 'border-top:1px solid var(--line);margin-top:12px;padding-top:12px';
     const filas = p.umas.map(u=>{
