@@ -375,17 +375,17 @@ const FAMILY_FIELDS = {
     key: "temp_agua_entrada", keyLabel: "Temp. agua ingreso (prom.)", keyUnit: "°C",
     actualizaEstadoActivo: true,
     fields: [
-      { key: "temp_agua_entrada", label: "Temperatura ingreso de agua", tipo: "numerico", unidad: "°C", min: 12, max: 16,
-        riesgo: null },
-      { key: "temp_agua_salida", label: "Temperatura salida de agua", tipo: "numerico", unidad: "°C", min: 14, max: 22,
-        riesgo: null },
+      { key: "temp_agua_entrada", label: "Temperatura ingreso de agua", tipo: "numerico", unidad: "°C", min: 9, max: 15, alertaSoloSiSupera: true, severidad: "Media",
+        riesgo: "Revisar caudal de agua" },
+      { key: "temp_agua_salida", label: "Temperatura salida de agua", tipo: "numerico", unidad: "°C", min: 14, max: 20, alertaSoloSiBajo: true, severidad: "Media",
+        riesgo: "Revisar UMA" },
       { key: "amperaje", label: "Amperaje (display)", tipo: "numerico", unidad: "A", informativo: true, min: null, max: null,
         riesgo: null },
-      { key: "manometro_ingreso", label: "¿Cuenta con manómetro de ingreso?", tipo: "select",
+      { key: "manometro_ingreso", label: "¿Cuenta con manómetro de ingreso de agua?", tipo: "select",
         opciones: ["No","Sí"], riesgo: null },
       { key: "presion_ingreso", label: "Presión ingreso de agua", tipo: "numerico", unidad: "PSI", min: 35, max: 60,
         dependeDe: "manometro_ingreso", dependeValor: "Sí", riesgo: null },
-      { key: "manometro_salida", label: "¿Cuenta con manómetro de salida?", tipo: "select",
+      { key: "manometro_salida", label: "¿Cuenta con manómetro de salida de agua?", tipo: "select",
         opciones: ["No","Sí"], riesgo: null },
       { key: "presion_salida", label: "Presión salida de agua", tipo: "numerico", unidad: "PSI", min: 35, max: 60,
         dependeDe: "manometro_salida", dependeValor: "Sí", riesgo: null },
@@ -393,7 +393,7 @@ const FAMILY_FIELDS = {
         opciones: ["Se mantiene limpio","Necesita limpieza","Se realizó limpieza","Filtro con desgaste","No tiene filtro"],
         opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media" },
         riesgo: null },
-      { key: "descarga_aire", label: "Descarga de aire", tipo: "numerico", unidad: "°C", min: 12, max: 16, alertaSoloSiSupera: true,
+      { key: "descarga_aire", label: "Descarga de aire", tipo: "numerico", unidad: "°C", min: 12, max: 19, alertaSoloSiSupera: true, severidad: "Alta",
         riesgo: null }
     ]
   }
@@ -3568,10 +3568,11 @@ function marcarFaltaCampo(el){
 function evaluarCampo(f, valor){
   if(!valor) return null;
   if(f.tipo==='numerico'){
-    if(f.alertaSoloSiSupera){
+    if(f.alertaSoloSiSupera || f.alertaSoloSiBajo){
       const n = Number(valor);
       if(isNaN(n)) return null;
-      return n > f.max ? { fuera:true, riesgo: f.riesgo || null, severidad:'Alta' } : { fuera:false };
+      const fuera = f.alertaSoloSiSupera ? n > f.max : n < f.min;
+      return fuera ? { fuera:true, riesgo: f.riesgo || null, severidad: f.severidad || 'Alta' } : { fuera:false };
     }
     if(f.min==null || f.max==null) return { fuera:false };
     const n = Number(valor);
@@ -3630,7 +3631,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
     if(f.tipo==='numerico'){
       const rangoTxt = (f.min==null||f.max==null) ? 'por definir' : (f.min===f.max ? ('exactamente '+f.min) : (f.min+'–'+f.max));
       const etiqueta = f.informativo ? `${f.label} (${f.unidad})`
-        : (f.alertaSoloSiSupera ? `${f.label} (${f.unidad}) — normal: ${rangoTxt} · alerta si supera ${f.max}` : `${f.label} (${f.unidad}) — normal: ${rangoTxt}`);
+        : (f.alertaSoloSiSupera ? `${f.label} (${f.unidad}) — normal: ${rangoTxt} · alerta si supera ${f.max}` : (f.alertaSoloSiBajo ? `${f.label} (${f.unidad}) — normal: ${rangoTxt} · alerta si está por debajo de ${f.min}` : `${f.label} (${f.unidad}) — normal: ${rangoTxt}`));
       return `<div class="full"${f.dependeDe ? ` id="campoWrap_${f.key}"` : ''}>
         <label>${etiqueta}</label>
         <input id="campo_${f.key}" type="number" step="any"${f.limiteMin!=null?' min="'+f.limiteMin+'"':''}${f.limiteMax!=null?' max="'+f.limiteMax+'"':''} value="${valPrev.replace(/"/g,'&quot;')}">
