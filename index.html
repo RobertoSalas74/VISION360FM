@@ -339,13 +339,13 @@ const FAMILY_FIELDS = {
     ]
   },
   "Compactos": {
-    key: "flujo_aire_caliente", keyLabel: "Flujo descarga aire caliente (prom.)", keyUnit: "°C",
+    key: null, keyLabel: null, keyUnit: null,
     estados: ["Operativo","Inoperativo","Inhabilitado","Observado"],
     actualizaEstadoActivo: true,
     fields: [
-      { key: "temp_seteada", label: "Temperatura seteada (display)", tipo: "numerico", unidad: "°C", informativo: true, min: null, max: null,
+      { key: "temp_seteada", label: "Temperatura seteada (display)", labelAlerta: "Seteado fuera de rango", tipo: "numerico", unidad: "°C", min: 30, max: 35, severidad: "Media",
         riesgo: null },
-      { key: "temp_interior", label: "Temperatura interior (display)", tipo: "numerico", unidad: "°C", informativo: true, min: null, max: null,
+      { key: "temp_interior", label: "Temperatura interior (display)", tipo: "numerico", unidad: "°C", min: 29, max: 35, severidad: "Media",
         riesgo: null },
       { key: "presenta_alarma", label: "Presenta alarma", tipo: "select",
         opciones: ["No","Sí"], opcionProblema: "Sí", detalleRequerido: true,
@@ -355,8 +355,20 @@ const FAMILY_FIELDS = {
         opciones: ["Se mantiene limpio","Necesita limpieza","Se realizó limpieza","Filtro con desgaste","No tiene filtro"],
         opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media" },
         riesgo: null },
-      { key: "flujo_aire_caliente", label: "Descarga de aire caliente", tipo: "numerico", unidad: "°C", min: 35, max: 38, alertaSoloSiSupera: true,
+      { key: "estado_estructura", label: "Estado de estructura", tipo: "multiselect",
+        opciones: ["Sin novedad","Oxidado","Despintado","Golpeado"], opcionesProblema: ["Oxidado","Despintado","Golpeado"],
+        severidad: "Media", unicaAbierta: true,
         riesgo: null }
+    ],
+    reglas: [
+      { key: "ciclo_enfriamiento", label: "Ciclo de enfriamiento", severidad: "Alta", riesgo: null,
+        eval: function(d){
+          if(!d || d.temp_seteada==null || d.temp_interior==null || d.temp_seteada==='' || d.temp_interior==='') return null;
+          const se = Number(d.temp_seteada), it = Number(d.temp_interior);
+          if(isNaN(se) || isNaN(it)) return null;
+          const dif = Math.round((it - se)*100)/100;
+          return dif > 5 ? { fuera:true, valor:'Interior '+it+' °C vs seteada '+se+' °C (diferencia '+dif+' °C)' } : { fuera:false };
+        } }
     ]
   },
   "UMA's": {
@@ -1491,6 +1503,11 @@ function renderEquipo(app, tag){
         if(fuera && ev.riesgo){
           camposHtml += `<div style="font-size:11.5px;color:var(--bad);margin:-4px 0 6px 4px">Riesgo: ${ev.riesgo}</div>`;
         }
+      });
+      (cfg.reglas||[]).forEach(rg=>{
+        const r = i.datos_adicionales ? rg.eval(i.datos_adicionales) : null;
+        if(!r) return;
+        camposHtml += `<div class="field-row"><div class="k">${rg.label}</div><div class="v" style="${r.fuera?'color:var(--bad);font-weight:700':''}">${r.fuera?escHtml(r.valor)+' ⚠':'Cumple'}</div></div>`;
       });
       tdDetalle.innerHTML = `
         <div class="field-row"><div class="k">Registrado por</div><div class="v">${escHtml(i.registrado_por||'—')}</div></div>
@@ -3560,9 +3577,13 @@ function evaluarCampo(f, valor){
     const n = Number(valor);
     if(isNaN(n)) return null;
     if(n < f.min || n > f.max){
-      return { fuera:true, riesgo: f.riesgo || null };
+      return { fuera:true, riesgo: f.riesgo || null, severidad: f.severidad };
     }
     return { fuera:false };
+  }
+  if(f.tipo==='multiselect'){
+    const sel = String(valor).split(',').map(x=>x.trim()).filter(Boolean);
+    return sel.some(x=>(f.opcionesProblema||[]).includes(x)) ? { fuera:true, riesgo: f.riesgo || null, severidad: f.severidad || 'Media' } : { fuera:false };
   }
   if(f.tipo==='select'){
     if(f.opcionesProblema){
@@ -3615,6 +3636,14 @@ function renderTecnicoForm(app, tag, valoresPrevios){
         <input id="campo_${f.key}" type="number" step="any"${f.limiteMin!=null?' min="'+f.limiteMin+'"':''}${f.limiteMax!=null?' max="'+f.limiteMax+'"':''} value="${valPrev.replace(/"/g,'&quot;')}">
       </div>`;
     }
+    if(f.tipo==='multiselect'){
+      const selPrev = valPrev ? valPrev.split(',').map(x=>x.trim()) : [];
+      return `<div class="full"><label>${f.label} (puedes marcar varias)</label>
+        <div id="msBox_${f.key}" class="msBox" data-key="${f.key}" style="border:1px solid var(--line);border-radius:8px;padding:2px 12px;background:#fff">
+        ${f.opciones.map((o,ix)=>`<label style="display:flex;align-items:center;gap:10px;padding:10px 0;font-size:14px;font-weight:400;${ix?'border-top:1px solid var(--line);':''}"><input type="checkbox" class="msChk" value="${o}"${selPrev.includes(o)?' checked':''} style="width:auto;margin:0"><span>${o}</span></label>`).join('')}
+        </div>
+        <input id="campo_${f.key}" type="hidden" data-box="msBox_${f.key}" value="${valPrev.replace(/"/g,'&quot;')}"></div>`;
+    }
     if(f.tipo==='select'){
       const detallePrev = vpDetalles[f.key] ? String(vpDetalles[f.key]).replace(/"/g,'&quot;') : '';
       const opts = f.opciones.map(o=>`<option${valPrev===o?' selected':''}>${o}</option>`).join('');
@@ -3665,6 +3694,19 @@ function renderTecnicoForm(app, tag, valoresPrevios){
   app.appendChild(panel);
 
   document.querySelectorAll('.grupoBombas').forEach(activarGrupoBombas);
+
+  document.querySelectorAll('.msBox').forEach(box=>{
+    const hid = $('#campo_'+box.dataset.key);
+    const chks = Array.from(box.querySelectorAll('.msChk'));
+    chks.forEach(c=>c.addEventListener('change', ()=>{
+      if(c.checked){
+        if(c.value==='Sin novedad') chks.forEach(x=>{ if(x!==c) x.checked = false; });
+        else chks.forEach(x=>{ if(x.value==='Sin novedad') x.checked = false; });
+      }
+      hid.value = chks.filter(x=>x.checked).map(x=>x.value).join(', ');
+      hid.dispatchEvent(new Event('change', {bubbles:true}));
+    }));
+  });
 
   document.querySelectorAll('.selectProblema').forEach(sel=>{
     sel.onchange = ()=>{
@@ -3783,8 +3825,12 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
   cfg.fields.forEach(f=>{
     const r = evaluarCampo(f, valores.datosAdicionales[f.key]);
     if(r && r.fuera){
-      alarmas.push({ key:f.key, label:f.label, valor:valores.datosAdicionales[f.key], detalle:valores.detalles[f.key], detalle2:(valores.detalles2||{})[f.key], riesgo:r.riesgo, severidad:r.severidad||'Alta' });
+      alarmas.push({ key:f.key, label:f.labelAlerta||f.label, valor:valores.datosAdicionales[f.key], detalle:valores.detalles[f.key], detalle2:(valores.detalles2||{})[f.key], riesgo:r.riesgo, severidad:r.severidad||'Alta' });
     }
+  });
+  (cfg.reglas||[]).forEach(rg=>{
+    const r = rg.eval(valores.datosAdicionales);
+    if(r && r.fuera) alarmas.push({ key:rg.key, label:rg.label, valor:r.valor, detalle:null, detalle2:null, riesgo:rg.riesgo||null, severidad:rg.severidad||'Alta' });
   });
   const hayAlarma = alarmas.length>0;
 
@@ -3871,7 +3917,17 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
         descripcion: a.detalle2 || null,
         estado: 'Pendiente'
       }));
-      const {error: errAlertas} = await sb.from('alertas_inspeccion').insert(filasAlertas);
+      let filasNuevas = filasAlertas;
+      const unicas = (cfg.fields||[]).filter(f=>f.unicaAbierta).map(f=>f.key);
+      for(const r of filasAlertas.filter(x=>unicas.includes(x.parametro_key))){
+        const {data:abiertas, error:errAb} = await sb.from('alertas_inspeccion').select('id').eq('tag',tag).eq('parametro_key',r.parametro_key).neq('estado','Cerrada');
+        if(errAb){ formError('resumenTecnicoMsg','Inspección guardada, pero no se pudieron revisar las alertas abiertas: '+errAb.message); btnConfirmar.disabled=false; return; }
+        if(abiertas && abiertas.length){
+          await sb.from('alertas_inspeccion').update({ valor:r.valor, severidad:r.severidad }).eq('id', abiertas[0].id);
+          filasNuevas = filasNuevas.filter(x=>x!==r);
+        }
+      }
+      const {error: errAlertas} = filasNuevas.length ? await sb.from('alertas_inspeccion').insert(filasNuevas) : {error:null};
       if(errAlertas){ formError('resumenTecnicoMsg','Inspección guardada, pero no se pudieron crear las alertas: '+errAlertas.message); btnConfirmar.disabled=false; return; }
     }
     if(cfg.actualizaEstadoActivo){
