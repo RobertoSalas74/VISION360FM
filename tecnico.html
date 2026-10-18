@@ -365,12 +365,13 @@ const FAMILY_FIELDS = {
     ],
     reglas: [
       { key: "ciclo_enfriamiento", label: "Ciclo de enfriamiento", severidad: "Alta", riesgo: null,
+        leyendaGrafico: { rl:'Máximo', rv:'5 °C de diferencia', corta:'máximo 5 °C de diferencia' },
         eval: function(d){
           if(!d || d.temp_seteada==null || d.temp_interior==null || d.temp_seteada==='' || d.temp_interior==='') return null;
           const se = Number(d.temp_seteada), it = Number(d.temp_interior);
           if(isNaN(se) || isNaN(it)) return null;
           const dif = Math.round((it - se)*100)/100;
-          return dif > 5 ? { fuera:true, valor:'Interior '+it+' °C vs seteada '+se+' °C (diferencia '+dif+' °C)' } : { fuera:false };
+          return dif > 5 ? { fuera:true, dif:dif, valor:'Interior '+it+' °C vs seteada '+se+' °C (diferencia '+dif+' °C)' } : { fuera:false };
         } }
     ]
   },
@@ -1327,14 +1328,22 @@ const ORDEN_AREAS_COMPACTOS = ["PA-1","PF-3","PF-4","PF-5","PI-7","PI-8","PI-9",
 
 const OCULTAR_ESTADO_ALERTAS = true;
 const FAMILIAS_VISIBLES = ["Chiller","Compactos","UMA's","Torres de Enfriamiento"];
-const GRAFICOS_FALLAS_FAMILIAS = ["UMA's"];
-const COLORES_FALLA = { temp_agua_salida:'#eb6834', descarga_aire:'#2a78d6', estado_filtro:'#1baf7a', presion_salida:'#eda100', presion_ingreso:'#e87ba4', temp_agua_entrada:'#6250d6' };
+const GRAFICOS_FALLAS_FAMILIAS = ["UMA's","Compactos"];
+const COLORES_FALLA = { temp_agua_salida:'#eb6834', descarga_aire:'#2a78d6', estado_filtro:'#1baf7a', presion_salida:'#eda100', presion_ingreso:'#e87ba4', temp_agua_entrada:'#6250d6', temp_seteada:'#eb6834', temp_interior:'#2a78d6', ciclo_enfriamiento:'#6250d6', presenta_alarma:'#e87ba4', estado_estructura:'#eda100' };
 const COLORES_FALLA_RESERVA = ['#0f6e56','#993556','#534ab7','#888780','#185fa5','#854f0b'];
 
 function ddmm(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
 
+function unirLista(a){ return a.length<2 ? a.join('') : a.slice(0,-1).join(', ')+' o '+a[a.length-1]; }
+function nombreFalla(f){ return (f.labelAlerta||f.label).replace(/\s*\(display\)/,''); }
+
 function leyendaParametro(f){
   if(f.key==='estado_filtro') return { rl:'Genera alerta', rv:'filtro con desgaste o sin filtro', corta:'alerta: filtro con desgaste o sin filtro' };
+  if(f.key==='presenta_alarma') return { rl:'Genera alerta', rv:'equipo con alarma', corta:'alerta: equipo con alarma' };
+  if(f.tipo==='multiselect'){
+    const t = unirLista((f.opcionesProblema||[]).map(x=>x.toLowerCase()));
+    return { rl:'Genera alerta', rv:t, corta:'alerta: '+t };
+  }
   if(f.tipo==='numerico' && f.min!=null && f.max!=null){
     const t = f.min+' a '+f.max+' '+f.unidad;
     return { rl:'Rango normal', rv:t, corta:'normal '+t };
@@ -1347,23 +1356,57 @@ function calcularFallasSemanas(fam, lunes0, nSem){
   const eq = equiposCriticos().filter(a=>a.familia===fam);
   const tags = new Set(eq.map(a=>a.tag));
   const fin = new Date(lunes0.getFullYear(), lunes0.getMonth(), lunes0.getDate()+nSem*7-1);
-  const rondas = ST.inspecciones.filter(i=>tags.has(i.tag) && i.fecha_inspeccion_d && i.fecha_inspeccion_d>=lunes0 && i.fecha_inspeccion_d<=fin);
+  const todas = ST.inspecciones.filter(i=>tags.has(i.tag) && i.fecha_inspeccion_d);
+  const rondas = todas.filter(i=>i.fecha_inspeccion_d>=lunes0 && i.fecha_inspeccion_d<=fin);
+  const semDe = d => Math.floor(daysBetween(lunes0, d)/7);
   const rondasPorTag = {};
-  rondas.forEach(i=>{ rondasPorTag[i.tag] = (rondasPorTag[i.tag]||0)+1; });
+  const rondasSem = new Array(nSem).fill(0);
+  rondas.forEach(i=>{ rondasPorTag[i.tag] = (rondasPorTag[i.tag]||0)+1; rondasSem[semDe(i.fecha_inspeccion_d)]++; });
+  const nombreEq = tag => { const a = ST.activosByTag.get(tag); return a ? displayName(a) : tag; };
   const fallas = [];
+  const nueva = (key,label,i,valor,extra) => Object.assign({ key, label, tag:i.tag, uma:nombreEq(i.tag), fecha:i.fecha_inspeccion_d, creado:i.created_at||'', valor, sem:semDe(i.fecha_inspeccion_d) }, extra||{});
+  const defs = {};
   rondas.forEach(i=>{
     const d = i.datos_adicionales || {};
     (cfg.fields||[]).forEach(f=>{
+      if(f.unicaAbierta) return;
       const v = d[f.key];
       if(v==null || v==='') return;
       const ev = evaluarCampo(f, v);
       if(!(ev && ev.fuera)) return;
-      const act = ST.activosByTag.get(i.tag);
-      fallas.push({
-        key:f.key, label:f.label, f, tag:i.tag, uma: act ? displayName(act) : i.tag,
-        fecha:i.fecha_inspeccion_d, creado:i.created_at||'',
-        valor: f.tipo==='numerico' ? (v+' '+f.unidad) : String(v),
-        sem: Math.floor(daysBetween(lunes0, i.fecha_inspeccion_d)/7)
+      let valor;
+      if(f.tipo==='numerico') valor = v+' '+f.unidad;
+      else { const det = d[f.key+'_detalle']; valor = det ? String(det) : String(v); }
+      defs[f.key] = { label:nombreFalla(f), ley:leyendaParametro(f) };
+      fallas.push(nueva(f.key, nombreFalla(f), i, valor));
+    });
+    (cfg.reglas||[]).forEach(rg=>{
+      const r = rg.eval(d);
+      if(!(r && r.fuera)) return;
+      defs[rg.key] = { label:rg.label, ley:rg.leyendaGrafico||{rl:'',rv:'',corta:''} };
+      fallas.push(nueva(rg.key, rg.label, i, 'dif. '+r.dif+' °C'));
+    });
+  });
+  // fallas que se cuentan una sola vez al aparecer (estado de estructura)
+  (cfg.fields||[]).filter(f=>f.unicaAbierta).forEach(f=>{
+    const prob = f.opcionesProblema || [];
+    const porTag = {};
+    todas.forEach(i=>{ (porTag[i.tag] = porTag[i.tag] || []).push(i); });
+    Object.keys(porTag).forEach(tag=>{
+      const lista = porTag[tag].slice().sort((a,b)=>a.fecha_inspeccion_d-b.fecha_inspeccion_d || String(a.created_at||'').localeCompare(String(b.created_at||'')));
+      let ep = null;
+      lista.forEach(i=>{
+        const v = (i.datos_adicionales||{})[f.key];
+        if(v==null || v==='') return;
+        const tiene = String(v).split(',').map(x=>x.trim()).some(x=>prob.indexOf(x)!==-1);
+        if(!tiene){ ep = null; return; }
+        if(!ep){
+          ep = { ultimoValor:String(v) };
+          if(i.fecha_inspeccion_d>=lunes0 && i.fecha_inspeccion_d<=fin){
+            defs[f.key] = { label:nombreFalla(f), ley:leyendaParametro(f), unaVez:true };
+            fallas.push(nueva(f.key, nombreFalla(f), i, String(v), { ep }));
+          }
+        } else { ep.ultimoValor = String(v); }
       });
     });
   });
@@ -1372,15 +1415,13 @@ function calcularFallasSemanas(fam, lunes0, nSem){
   const claves = Object.keys(totales).sort((a,b)=>totales[b]-totales[a]);
   let ir = 0;
   const params = claves.map(k=>{
-    const f = (cfg.fields||[]).find(x=>x.key===k);
-    const ley = leyendaParametro(f);
     const color = COLORES_FALLA[k] || COLORES_FALLA_RESERVA[ir++ % COLORES_FALLA_RESERVA.length];
     const lista = fallas.filter(x=>x.key===k);
     const porUma = {};
     lista.forEach(x=>{ (porUma[x.tag] = porUma[x.tag] || {tag:x.tag, uma:x.uma, items:[]}).items.push(x); });
     const umas = Object.values(porUma).map(u=>{ u.items.sort((a,b)=>a.fecha-b.fecha); return u; })
       .sort((a,b)=>b.items.length-a.items.length || a.uma.localeCompare(b.uma,'es',{numeric:true}));
-    return { key:k, label:f.label, color, ley, total:lista.length, umas };
+    return { key:k, label:defs[k].label, color, ley:defs[k].ley, unaVez:!!defs[k].unaVez, total:lista.length, umas };
   });
   const semanas = [];
   for(let w=0; w<nSem; w++){
@@ -1397,19 +1438,19 @@ function calcularFallasSemanas(fam, lunes0, nSem){
       porParam[p.key] = items;
       total += items.length;
     });
-    semanas.push({ label: ddmm(ini), porParam, total });
+    semanas.push({ label: ddmm(ini), rondas: rondasSem[w], porParam, total });
   }
   return { params, semanas, rondasPorTag, fin };
 }
 
 function svgAlertasSemana(D){
-  const W=760, H=300, ml=40, mr=10, mt=30, mb=34;
-  const pw=W-ml-mr, ph=H-mt-mb, n=D.semanas.length, step=pw/n, bw=Math.min(54, step*0.62);
+  const W=760, H=300, ml=40, mr=10, mt=30, mb=52;
+  const pw=W-ml-mr, ph=H-mt-mb, n=D.semanas.length, step=pw/n, bw=Math.min(n<=4?78:54, step*0.62);
   const maxT = Math.max.apply(null, D.semanas.map(s=>s.total).concat([1]));
   const paso = Math.max(1, Math.ceil(Math.max(4,maxT)/4));
   const ymax = paso*Math.ceil(Math.max(4,maxT)/paso);
   const Y = v => mt + ph - (v/ymax)*ph;
-  let s = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Alertas por semana según qué falló. Totales: '+D.semanas.map(x=>x.label+': '+x.total).join(', ')+'" style="display:block">';
+  let s = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Alertas por semana según qué falló. '+D.semanas.map(x=>x.label+': '+(x.rondas===0?'sin rondas':x.total+' alertas en '+x.rondas+(x.rondas===1?' ronda':' rondas'))).join('; ')+'" style="display:block">';
   for(let v=0; v<=ymax; v+=paso){
     s += '<line x1="'+ml+'" x2="'+(W-mr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="#E1E4EC" stroke-width="1"/>';
     s += '<text x="'+(ml-8)+'" y="'+(Y(v)+4)+'" text-anchor="end" font-size="13" fill="#5B6072">'+v+'</text>';
@@ -1424,8 +1465,10 @@ function svgAlertasSemana(D){
       s += '<rect data-w="'+w+'" data-p="'+pi+'" x="'+(cx-bw/2)+'" y="'+y1+'" width="'+bw+'" height="'+(y0-y1)+'" fill="'+p.color+'" stroke="#fff" stroke-width="2" style="cursor:default"/>';
       acum += c;
     });
-    if(sem.total) s += '<text x="'+cx+'" y="'+(Y(sem.total)-8)+'" text-anchor="middle" font-size="16" font-weight="700" fill="#1A1D2B">'+sem.total+'</text>';
-    s += '<text x="'+cx+'" y="'+(H-10)+'" text-anchor="middle" font-size="13" fill="#5B6072">'+sem.label+'</text>';
+    if(sem.rondas===0) s += '<text x="'+cx+'" y="'+(Y(0)-10)+'" text-anchor="middle" font-size="14" fill="#5B6072">sin rondas</text>';
+    else s += '<text x="'+cx+'" y="'+(Y(sem.total)-8)+'" text-anchor="middle" font-size="16" font-weight="700" fill="#1A1D2B">'+sem.total+'</text>';
+    s += '<text x="'+cx+'" y="'+(H-28)+'" text-anchor="middle" font-size="13" fill="#1A1D2B">'+sem.label+'</text>';
+    if(sem.rondas>0) s += '<text x="'+cx+'" y="'+(H-10)+'" text-anchor="middle" font-size="12" fill="#5B6072">'+sem.rondas+(sem.rondas===1?' ronda':' rondas')+'</text>';
   });
   return s + '</svg>';
 }
@@ -1433,19 +1476,34 @@ function svgAlertasSemana(D){
 function renderGraficosFallas(app, fam){
   const eq = equiposCriticos().filter(a=>a.familia===fam);
   if(!eq.length) return;
-  const NSEM = 8;
+  const tags = new Set(eq.map(a=>a.tag));
+  const conRonda = ST.inspecciones.filter(i=>tags.has(i.tag) && i.fecha_inspeccion_d);
+  const NSEM = 8, MAXEQ = 10;
   let pagina = 0, sel = null;
   const panelA = el('div','panel');
   const panelB = el('div','panel');
   app.appendChild(panelA);
   app.appendChild(panelB);
+  if(!conRonda.length){
+    panelA.innerHTML = '<h3 style="margin:0 0 6px">Alertas por semana, según qué falló</h3>';
+    panelA.appendChild(el('div','empty-msg','Todavía no hay rondas registradas.'));
+    panelB.style.display = 'none';
+    return;
+  }
+  const primeraFecha = conRonda.reduce((m,i)=>i.fecha_inspeccion_d<m?i.fecha_inspeccion_d:m, conRonda[0].fecha_inspeccion_d);
+  const primera = inicioSemana(primeraFecha);
 
   function pintar(){
-    const ref = new Date(ST.cutoff.getFullYear(), ST.cutoff.getMonth(), ST.cutoff.getDate() - pagina*NSEM*7);
-    const lr = inicioSemana(ref);
-    const lunes0 = new Date(lr.getFullYear(), lr.getMonth(), lr.getDate() - (NSEM-1)*7);
-    const D = calcularFallasSemanas(fam, lunes0, NSEM);
-    const rango = ddmm(lunes0)+' – '+ddmm(D.fin);
+    const actual = inicioSemana(ST.cutoff);
+    const fin = new Date(actual.getFullYear(), actual.getMonth(), actual.getDate() - pagina*NSEM*7);
+    let ini = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate() - (NSEM-1)*7);
+    if(fin < primera) ini = fin;
+    else if(ini < primera) ini = primera;
+    const nSem = Math.round(daysBetween(ini, fin)/7)+1;
+    const esPrimera = ini.getTime()===primera.getTime();
+    const D = calcularFallasSemanas(fam, ini, nSem);
+    const rango = ddmm(ini)+' – '+ddmm(D.fin);
+    const periodo = esPrimera ? 'desde '+ddmm(ini) : rango;
     if(!D.params.some(p=>p.key===sel)) sel = null;
 
     /* ---------- Gráfico 1 ---------- */
@@ -1459,7 +1517,8 @@ function renderGraficosFallas(app, fam){
     bPrev.type = 'button';
     const bNext = el('button','btn ghost','Siguientes ›');
     bNext.type = 'button';
-    if(pagina===0){ bNext.style.visibility = 'hidden'; }
+    if(esPrimera) bPrev.style.visibility = 'hidden';
+    if(pagina===0) bNext.style.visibility = 'hidden';
     bPrev.onclick = ()=>{ pagina++; pintar(); };
     bNext.onclick = ()=>{ if(pagina>0){ pagina--; pintar(); } };
     const lbl = el('span'); lbl.textContent = rango;
@@ -1468,48 +1527,46 @@ function renderGraficosFallas(app, fam){
     panelA.appendChild(head);
     const sub = el('p');
     sub.style.cssText = 'font-size:12px;color:var(--text-low);margin:0 0 12px';
-    sub.textContent = 'Últimas 8 semanas, por semana que inicia el lunes. Pasa el cursor sobre un color para ver el detalle.';
+    sub.textContent = (esPrimera ? 'Desde el '+ddmm(ini)+', la primera semana con datos. ' : 'Semanas que inician el lunes. ')+'Pasa el cursor sobre un color para ver el detalle.';
     panelA.appendChild(sub);
-    if(!D.params.length){
-      panelA.appendChild(el('div','empty-msg','Sin alertas en estas 8 semanas.'));
-    } else {
+    if(D.params.length){
       const leg = el('div');
       leg.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 22px;margin-bottom:12px;font-size:14px;color:var(--text-mid)';
       leg.innerHTML = D.params.map(p=>'<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:2px;background:'+p.color+'"></span>'+escHtml(p.label)+(p.ley.corta?' · '+escHtml(p.ley.corta):'')+'</span>').join('');
       panelA.appendChild(leg);
-      const wrap = el('div');
-      wrap.style.cssText = 'position:relative;width:100%';
-      wrap.innerHTML = svgAlertasSemana(D);
-      const tip = el('div');
-      tip.style.cssText = 'position:absolute;display:none;pointer-events:none;background:var(--bg-card);border:1px solid var(--line);border-radius:8px;padding:8px 12px;box-shadow:0 4px 14px rgba(20,25,50,.15);font-size:14px;z-index:5;max-width:300px';
-      wrap.appendChild(tip);
-      panelA.appendChild(wrap);
-      wrap.querySelectorAll('rect[data-w]').forEach(r=>{
-        r.addEventListener('mouseenter', ()=>{
-          const p = D.params[Number(r.dataset.p)];
-          const items = D.semanas[Number(r.dataset.w)].porParam[p.key];
-          const vis = items.slice(0,5).map(x=>'<div>'+escHtml(x.uma)+' · '+escHtml(x.valor)+'</div>').join('');
-          tip.innerHTML = '<div style="font-weight:700;margin-bottom:4px">'+escHtml(p.label)+'</div>'+vis+(items.length>5?'<div style="color:var(--text-mid)">+'+(items.length-5)+' más</div>':'');
-          tip.style.display = 'block';
-        });
-        r.addEventListener('mousemove', (e)=>{
-          const b = wrap.getBoundingClientRect();
-          let x = e.clientX - b.left + 14, y = e.clientY - b.top + 14;
-          if(x + tip.offsetWidth > b.width) x = e.clientX - b.left - tip.offsetWidth - 14;
-          tip.style.left = Math.max(0,x)+'px'; tip.style.top = y+'px';
-        });
-        r.addEventListener('mouseleave', ()=>{ tip.style.display = 'none'; });
-      });
     }
+    const wrap = el('div');
+    wrap.style.cssText = 'position:relative;width:100%';
+    wrap.innerHTML = svgAlertasSemana(D);
+    const tip = el('div');
+    tip.style.cssText = 'position:absolute;display:none;pointer-events:none;background:var(--bg-card);border:1px solid var(--line);border-radius:8px;padding:8px 12px;box-shadow:0 4px 14px rgba(20,25,50,.15);font-size:14px;z-index:5;max-width:300px';
+    wrap.appendChild(tip);
+    panelA.appendChild(wrap);
+    wrap.querySelectorAll('rect[data-w]').forEach(r=>{
+      r.addEventListener('mouseenter', ()=>{
+        const p = D.params[Number(r.dataset.p)];
+        const items = D.semanas[Number(r.dataset.w)].porParam[p.key];
+        const vis = items.slice(0,5).map(x=>'<div>'+escHtml(x.uma)+' · '+escHtml(x.valor)+'</div>').join('');
+        tip.innerHTML = '<div style="font-weight:700;margin-bottom:4px">'+escHtml(p.label)+'</div>'+vis+(items.length>5?'<div style="color:var(--text-mid)">+'+(items.length-5)+' más</div>':'');
+        tip.style.display = 'block';
+      });
+      r.addEventListener('mousemove', (e)=>{
+        const b = wrap.getBoundingClientRect();
+        let x = e.clientX - b.left + 14, y = e.clientY - b.top + 14;
+        if(x + tip.offsetWidth > b.width) x = e.clientX - b.left - tip.offsetWidth - 14;
+        tip.style.left = Math.max(0,x)+'px'; tip.style.top = y+'px';
+      });
+      r.addEventListener('mouseleave', ()=>{ tip.style.display = 'none'; });
+    });
 
     /* ---------- Gráfico 2 ---------- */
     panelB.innerHTML = '<h3 style="margin:0 0 4px">Total de alertas por falla</h3>';
     const sub2 = el('p');
     sub2.style.cssText = 'font-size:12px;color:var(--text-low);margin:0 0 12px';
-    sub2.textContent = 'Mismo periodo del gráfico anterior ('+rango+'). Haz clic en una barra para ver qué equipos fallaron.';
+    sub2.textContent = 'Mismo periodo del gráfico anterior ('+periodo+'). Haz clic en una barra para ver qué equipos fallaron.';
     panelB.appendChild(sub2);
     if(!D.params.length){
-      panelB.appendChild(el('div','empty-msg','Sin alertas en estas 8 semanas.'));
+      panelB.appendChild(el('div','empty-msg','Sin alertas en este periodo.'));
       return;
     }
     const maxP = D.params[0].total;
@@ -1529,20 +1586,32 @@ function renderGraficosFallas(app, fam){
     if(!p) return;
     const det = el('div');
     det.style.cssText = 'border-top:1px solid var(--line);margin-top:12px;padding-top:12px';
-    const filas = p.umas.map(u=>{
-      const vis = u.items.slice(0,4).map(x=>'<span style="font-size:14px;padding:3px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg-page);color:var(--text-hi)">'+ddmm(x.fecha)+' · '+escHtml(x.valor)+'</span>').join('');
-      const mas = u.items.length>4 ? '<span style="font-size:14px;color:var(--text-mid);align-self:center">+'+(u.items.length-4)+' más</span>' : '';
-      const nr = D.rondasPorTag[u.tag]||u.items.length;
+    const chipS = 'font-size:14px;padding:3px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg-page);color:var(--text-hi)';
+    const vistos = p.umas.slice(0,MAXEQ);
+    const filas = vistos.map(u=>{
+      let cab, chips;
+      if(p.unaVez){
+        const ult = u.items[u.items.length-1];
+        cab = 'desde '+ddmm(ult.fecha);
+        chips = '<span style="'+chipS+'">'+escHtml(ult.ep ? ult.ep.ultimoValor : ult.valor)+'</span>';
+      } else {
+        const nr = D.rondasPorTag[u.tag]||u.items.length;
+        cab = u.items.length+' de '+nr+(nr===1?' ronda':' rondas');
+        chips = u.items.slice(0,4).map(x=>'<span style="'+chipS+'">'+ddmm(x.fecha)+' · '+escHtml(x.valor)+'</span>').join('')+
+          (u.items.length>4?'<span style="font-size:14px;color:var(--text-mid);align-self:center">+'+(u.items.length-4)+' más</span>':'');
+      }
       return '<div style="padding:8px 0;border-top:1px solid var(--line)">'+
         '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><span style="font-size:15px;font-weight:700">'+escHtml(u.uma)+'</span>'+
-        '<span style="font-size:14px;color:var(--text-mid)">'+u.items.length+' de '+nr+(nr===1?' ronda':' rondas')+'</span></div>'+
-        '<div style="display:flex;flex-wrap:wrap;gap:6px">'+vis+mas+'</div></div>';
+        '<span style="font-size:14px;color:var(--text-mid)">'+cab+'</span></div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div></div>';
     }).join('');
+    const resto = p.umas.length - vistos.length;
     det.innerHTML =
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:12px;height:12px;border-radius:2px;background:'+p.color+'"></span>'+
       '<span style="font-size:16px;font-weight:700">'+escHtml(p.label)+'</span>'+
       '<span style="font-size:14px;color:var(--text-mid)">· '+p.total+(p.total===1?' alerta':' alertas')+' en '+p.umas.length+(p.umas.length===1?' equipo':' equipos')+'</span></div>'+
-      (p.ley.rl ? '<div style="font-size:14px;color:var(--text-mid);margin:0 0 8px 20px">'+p.ley.rl+': <span style="font-weight:700;color:var(--text-hi)">'+escHtml(p.ley.rv)+'</span></div>' : '')+filas;
+      (p.ley.rl ? '<div style="font-size:14px;color:var(--text-mid);margin:0 0 8px 20px">'+p.ley.rl+': <span style="font-weight:700;color:var(--text-hi)">'+escHtml(p.ley.rv)+'</span>'+(p.unaVez?' · se cuenta una vez, cuando aparece':'')+'</div>' : '')+filas+
+      (resto>0 ? '<div style="padding:8px 0;border-top:1px solid var(--line);font-size:14px;color:var(--text-mid)">+'+resto+' equipos más</div>' : '');
     panelB.appendChild(det);
   }
   pintar();
