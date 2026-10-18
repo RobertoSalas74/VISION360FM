@@ -616,7 +616,7 @@ function updateHeaderVisibility(){
 /* ---------------- Estatus General ---------------- */
 function renderStatus(app){
   const title = el('div');
-  title.innerHTML = `<h2 class="view-title">Estatus General</h2><p class="view-sub">Equipos críticos — corte al ${fmtDate(isoDateInput(ST.cutoff))}</p>`;
+  title.innerHTML = `<h2 class="view-title">Estatus General</h2><p class="view-sub">Equipos críticos — corte al ${fmtDate(isoDateInput(ST.cutoff))}</p><p class="view-sub" style="font-size:12px;color:var(--text-low);margin-top:2px">La app se actualiza 2 veces por semana: martes y viernes.</p>`;
   app.appendChild(title);
 
   const eqCrit = equiposCriticos();
