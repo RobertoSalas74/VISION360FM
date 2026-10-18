@@ -1427,6 +1427,68 @@ function renderFamily(app, fam){
   app.appendChild(el('div','kbd-hint','<kbd>←</kbd> <kbd>→</kbd> cambiar de familia · <kbd>Esc</kbd> volver'));
 }
 
+/* ---------------- Vida útil en la ficha del equipo ---------------- */
+function panelVidaUtil(act){
+  const vu = VIDA_UTIL[act.familia] || null;
+  const antig = antiguedadDe(act);
+  const anios = n => n+(n===1?' año':' años');
+  const panel = el('div','panel');
+  let pill, hint = '', barra = '';
+  if(antig==null || vu==null){
+    pill = '<span class="dias-pill" style="background:var(--bg-page);color:var(--text-mid);border:1px solid var(--line)">Por definir</span>';
+    hint = (antig==null ? 'Falta el año de fabricación para calcularla.' : 'Esta familia no tiene una vida útil de referencia definida.');
+  } else {
+    const est = estadoVidaUtil(antig, vu);
+    let cls, txt;
+    if(est==='fuera'){
+      const ex = antig - vu;
+      cls = 'bad'; txt = ex===0 ? 'Cumplió su vida útil' : 'Superó la vida útil por '+anios(ex);
+    } else if(est==='proximo'){
+      cls = 'warn'; txt = 'Próximo a cumplirla · le queda '+anios(vu-antig);
+    } else {
+      cls = 'good'; txt = 'Dentro · le quedan '+anios(vu-antig);
+    }
+    pill = '<span class="dias-pill '+cls+'" style="font-size:13px;padding:4px 12px">'+txt+'</span>';
+    const color = cls==='warn' ? 'var(--warn)' : 'var(--good)';
+    const base = Math.max(antig, vu);
+    const pRef = Math.round(vu/base*1000)/10;
+    const pFill = Math.round(Math.min(antig,vu)/base*1000)/10;
+    const aria = 'Barra de vida útil: '+anios(antig)+' de antigüedad sobre '+anios(vu)+' de referencia';
+    if(est==='fuera'){
+      barra = '<div style="padding:14px 0 4px"><div role="img" aria-label="'+aria+'" style="position:relative;height:14px;background:var(--bg-page);border-radius:4px;margin:6px 0 0">'+
+        '<div style="position:absolute;left:0;top:0;height:100%;width:'+pRef+'%;background:var(--good);border-radius:4px 0 0 4px"></div>'+
+        '<div style="position:absolute;left:'+pRef+'%;top:0;height:100%;width:'+(100-pRef)+'%;background:var(--bad);border-radius:0 4px 4px 0"></div>'+
+        '<div style="position:absolute;left:'+pRef+'%;top:-4px;height:22px;width:2px;background:var(--text-hi)"></div></div>'+
+        '<div style="position:relative;height:18px;margin-top:6px;font-size:12px;color:var(--text-mid)"><span style="position:absolute;left:0">0</span>'+
+        (pRef<92 ? '<span style="position:absolute;left:'+pRef+'%;transform:translateX(-50%)">'+anios(vu)+' (referencia)</span>' : '')+
+        '<span style="position:absolute;right:0">'+anios(antig)+'</span></div></div>';
+    } else {
+      barra = '<div style="padding:14px 0 4px"><div role="img" aria-label="'+aria+'" style="position:relative;height:14px;background:var(--bg-page);border-radius:4px;margin:6px 0 0">'+
+        '<div style="position:absolute;left:0;top:0;height:100%;width:'+pFill+'%;background:'+color+';border-radius:4px"></div>'+
+        '<div style="position:absolute;right:0;top:-4px;height:22px;width:2px;background:var(--text-hi)"></div></div>'+
+        '<div style="position:relative;height:18px;margin-top:6px;font-size:12px;color:var(--text-mid)"><span style="position:absolute;left:0">0</span>'+
+        '<span style="position:absolute;right:0">'+anios(vu)+' (referencia)</span></div></div>';
+    }
+  }
+  panel.innerHTML = '<h3>Vida útil</h3>'+
+    '<div class="field-row"><div class="k">Vida útil de referencia</div><div class="v">'+(vu!=null?anios(vu):'—')+'</div></div>'+
+    '<div class="field-row"><div class="k">Antigüedad</div><div class="v">'+(antig!=null?anios(antig):'—')+'</div></div>'+
+    '<div class="field-row"><div class="k">Estado</div><div class="v">'+pill+'</div></div>'+barra+
+    (hint ? '<div id="vuHint" style="font-size:13px;color:var(--text-mid);padding:10px 0 4px">'+hint+'</div>' : '')+
+    (antig!=null && vu!=null ? '<div style="font-size:12px;color:var(--text-low);padding:8px 0 4px">Calculado con el año de fabricación (aproximado, ±1 año). Vida útil de referencia de la familia.</div>' : '');
+  if(antig==null && !ST.modoTecnico && (esAdmin() || esProponente())){
+    const h = panel.querySelector('#vuHint');
+    if(h){
+      const a = el('a',null,'Editar equipo');
+      a.href = 'javascript:void(0)';
+      a.style.cssText = 'margin-left:6px;color:var(--sodexo-blue);font-weight:600;text-decoration:underline';
+      a.onclick = ()=>openFormEditarEquipo(act.tag);
+      h.appendChild(a);
+    }
+  }
+  return panel;
+}
+
 /* ---------------- Ficha individual de equipo ---------------- */
 /* ---------------- Compactos: lista de áreas y tabla tipo Excel ---------------- */
 const FAMILIAS_POR_AREA = ["Compactos", "UMA's"];
@@ -1875,10 +1937,11 @@ function renderEquipo(app, tag){
     <div class="field-row"><div class="k">N° de serie</div><div class="v">${act.numero_serie||'—'}</div></div>
     <div class="field-row"><div class="k">Potencia / Capacidad</div><div class="v">${potTxt}</div></div>
     <div class="field-row"><div class="k">Ubicación</div><div class="v">${act.ubicacion_especifica||'—'}</div></div>
-    <div class="field-row"><div class="k">Año de fabricación</div><div class="v">${act.anio_fabricacion||'—'}${antig!=null?' ('+antig+' años)':''}</div></div>
+    <div class="field-row"><div class="k">Año de fabricación</div><div class="v">${act.anio_fabricacion||'—'}</div></div>
     ${act.costo_adquisicion!=null ? `<div class="field-row"><div class="k">Costo de adquisición</div><div class="v">${fmtMoney(act.costo_adquisicion)}</div></div>` : ''}
   `;
   app.appendChild(invPanel);
+  app.appendChild(panelVidaUtil(act));
 
   const top = el('div','family-top');
   top.innerHTML = `
