@@ -446,11 +446,12 @@ async function cargarTodo(){
   if(e1 || e2 || e3 || e4 || e5){
     throw new Error((e1&&e1.message)||(e2&&e2.message)||(e3&&e3.message)||(e4&&e4.message)||(e5&&e5.message)||'Error desconocido');
   }
-  ST.activos = activos||[];
-  ST.observaciones = (observaciones||[]).map(o=>({...o, fecha_observacion_d:parseDate(o.fecha_observacion), fecha_cierre_d:parseDate(o.fecha_cierre)}));
-  ST.inspecciones = (inspecciones||[]).map(i=>({...i, fecha_inspeccion_d:parseDate(i.fecha_inspeccion)}));
-  ST.alertas = alertas||[];
-  ST.familias = familias||[];
+  const ocultos = new Set((activos||[]).filter(a=>FAMILIAS_VISIBLES.indexOf(a.familia)===-1).map(a=>a.tag));
+  ST.activos = (activos||[]).filter(a=>!ocultos.has(a.tag));
+  ST.observaciones = (observaciones||[]).filter(o=>!ocultos.has(o.tag)).map(o=>({...o, fecha_observacion_d:parseDate(o.fecha_observacion), fecha_cierre_d:parseDate(o.fecha_cierre)}));
+  ST.inspecciones = (inspecciones||[]).filter(i=>!ocultos.has(i.tag)).map(i=>({...i, fecha_inspeccion_d:parseDate(i.fecha_inspeccion)}));
+  ST.alertas = (alertas||[]).filter(a=>!ocultos.has(a.tag));
+  ST.familias = (familias||[]).filter(f=>FAMILIAS_VISIBLES.indexOf(f.nombre)!==-1);
   ST.activosByTag = new Map(ST.activos.map(a=>[a.tag,a]));
   const presentFamilies = new Set(ST.activos.filter(a=>a.es_critico).map(a=>a.familia));
   ST.familyOrder = ST.familias.map(f=>f.nombre).filter(f=>presentFamilies.has(f));
@@ -582,6 +583,7 @@ function render(){
   else if(ST.view.screen==='tecnico-form') renderTecnicoForm(app, ST.view.tag);
   else if(ST.view.screen==='tecnico-alertas') renderTecnicoAlertas(app);
   else if(ST.view.screen==='propuestas') renderPropuestas(app);
+  else if(ST.view.screen==='construccion') renderConstruccion(app, ST.view.familia);
   else renderStatus(app);
   updateHeaderVisibility();
 }
@@ -616,10 +618,24 @@ function updateHeaderVisibility(){
   }
 }
 
+/* ---------------- Familia en construcción ---------------- */
+function renderConstruccion(app, fam){
+  const crumb = el('div','crumb');
+  const b = el('button','','← Estatus general');
+  b.onclick = ()=>go('status');
+  crumb.appendChild(b);
+  app.appendChild(crumb);
+  const box = el('div');
+  box.style.cssText = 'text-align:center;padding:90px 20px 60px';
+  box.innerHTML = `<h2 class="view-title" style="margin-bottom:10px">${escHtml(fam||'')}</h2><p class="view-sub" style="font-size:20px;color:var(--text-mid)">En construcción</p>`;
+  app.appendChild(box);
+}
+
 /* ---------------- Estatus General ---------------- */
 function renderStatus(app){
   const title = el('div');
   title.innerHTML = `<h2 class="view-title">Estatus General</h2><p class="view-sub">Equipos críticos — corte al ${fmtDate(isoDateInput(ST.cutoff))}</p><p class="view-sub" style="font-size:12px;color:var(--text-low);margin-top:2px">La app se actualiza 2 veces por semana: martes y viernes.</p>`;
+  title.style.textAlign = 'center';
   app.appendChild(title);
 
   const eqCrit = equiposCriticos();
@@ -627,6 +643,16 @@ function renderStatus(app){
 
   let totalEq=0, gastoTotal=0;
   const grid = el('div','kpi-grid');
+  grid.style.gridTemplateColumns = 'repeat(auto-fit,minmax(210px,1fr))';
+  ST.familias.map(f=>f.nombre).filter(f=>FAMILIAS_VISIBLES.indexOf(f)!==-1 && familiasConDatos.indexOf(f)===-1).forEach(fam=>{
+    const card = el('div','kpi-card clickable');
+    card.innerHTML = `<div class="fam-name">${fam}</div><div class="pct">—</div><div class="meta">Sin equipos registrados</div>`;
+    card.tabIndex=0;
+    const destino = ()=>go('construccion',{familia:fam});
+    card.onclick = destino;
+    card.onkeydown = (e)=>{ if(e.key==='Enter') destino(); };
+    grid.appendChild(card);
+  });
   familiasConDatos.forEach(fam=>{
     const s = familyStats(fam);
     totalEq += s.total; gastoTotal += s.gasto;
@@ -652,7 +678,9 @@ function renderStatus(app){
   if(!familiasConDatos.length){
     app.appendChild(el('div','empty-msg','Todavía no hay equipos cargados. '+(ST.session? 'Usa "Alta de equipo" para comenzar.':'')));
   }
-  app.appendChild(el('div','kbd-hint','Usa <kbd>←</kbd> <kbd>→</kbd> dentro del detalle de familia para moverte entre familias, <kbd>Esc</kbd> para volver.'));
+  const hint = el('div','kbd-hint','Usa <kbd>←</kbd> <kbd>→</kbd> dentro del detalle de familia para moverte entre familias, <kbd>Esc</kbd> para volver.');
+  hint.style.textAlign = 'center';
+  app.appendChild(hint);
 }
 
 /* ---------------- Detalle de familia ---------------- */
@@ -1298,6 +1326,7 @@ const FAMILIAS_POR_AREA = ["Compactos", "UMA's"];
 const ORDEN_AREAS_COMPACTOS = ["PA-1","PF-3","PF-4","PF-5","PI-7","PI-8","PI-9","PI-11","RECUPERADOR","SALA CHILLER","SALA RACF"];
 
 const OCULTAR_ESTADO_ALERTAS = true;
+const FAMILIAS_VISIBLES = ["Chiller","Compactos","UMA's","Torres de Enfriamiento"];
 const GRAFICOS_FALLAS_FAMILIAS = ["UMA's"];
 const COLORES_FALLA = { temp_agua_salida:'#eb6834', descarga_aire:'#2a78d6', estado_filtro:'#1baf7a', presion_salida:'#eda100', presion_ingreso:'#e87ba4', temp_agua_entrada:'#6250d6' };
 const COLORES_FALLA_RESERVA = ['#0f6e56','#993556','#534ab7','#888780','#185fa5','#854f0b'];
@@ -3567,7 +3596,7 @@ async function iniciar(){
 /* =========================================================
    MODULO 2 — FLUJO TECNICOS (cuenta compartida)
 ========================================================= */
-const FAMILIAS_TECNICO = ["Chiller","Compactos","UMA's","Compresores","Torres de Enfriamiento"];
+const FAMILIAS_TECNICO = ["Chiller","Compactos","UMA's","Torres de Enfriamiento"];
 
 function renderTecnicoLogin(app){
   const card = el('div','center-card');
