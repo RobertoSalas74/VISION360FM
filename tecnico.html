@@ -362,17 +362,17 @@ const FAMILY_FIELDS = {
         riesgo: null },
       { key: "temp_interior", label: "Temperatura interior (display)", tipo: "numerico", unidad: "°C", min: 29, max: 35, severidad: "Media",
         riesgo: null },
-      { key: "presenta_alarma", label: "Presenta alarma", tipo: "select",
+      { key: "presenta_alarma", label: "Presenta alarma", tipo: "select", persistente: true,
         opciones: ["No","Sí"], opcionProblema: "Sí", detalleRequerido: true,
         detalleLabel: "Código de alarma", detalleLabel2: "Descripción de la alarma (si la conoces)",
         riesgo: null },
-      { key: "estado_filtro", label: "Estado de filtro", tipo: "select",
+      { key: "estado_filtro", label: "Estado de filtro", tipo: "select", persistente: true,
         opciones: ["Se mantiene limpio","Necesita limpieza","Se realizó limpieza","Filtro con desgaste","No tiene filtro"],
         opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media" },
         riesgo: null },
       { key: "estado_estructura", label: "Estado de estructura", tipo: "multiselect",
         opciones: ["Sin novedad","Oxidado","Despintado","Golpeado"], opcionesProblema: ["Oxidado","Despintado","Golpeado"],
-        severidad: "Media", unicaAbierta: true,
+        severidad: "Media", unicaAbierta: true, persistente: true,
         riesgo: null }
     ],
     reglas: [
@@ -405,7 +405,7 @@ const FAMILY_FIELDS = {
         opciones: ["No","Sí"], riesgo: null },
       { key: "presion_salida", label: "Presión salida de agua", tipo: "numerico", unidad: "PSI", min: 35, max: 60,
         dependeDe: "manometro_salida", dependeValor: "Sí", riesgo: null },
-      { key: "estado_filtro", label: "Estado de filtro", tipo: "select",
+      { key: "estado_filtro", label: "Estado de filtro", tipo: "select", persistente: true,
         opciones: ["Se mantiene limpio","Necesita limpieza","Se realizó limpieza","Filtro con desgaste","No tiene filtro"],
         opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media" },
         riesgo: null },
@@ -1400,6 +1400,20 @@ const COLORES_FALLA_RESERVA = ['#0f6e56','#993556','#534ab7','#888780','#185fa5'
 function ddmm(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
 
 function unirLista(a){ return a.length<2 ? a.join('') : a.slice(0,-1).join(', ')+' o '+a[a.length-1]; }
+/* Un estado que persiste (filtro, alarma, estructura): si la ronda anterior del equipo ya tenía el mismo problema, no es una falla nueva. */
+function mismoProblemaPersistente(f, prev, detallesNuevos){
+  if(!prev) return false;
+  const pv = prev[f.key];
+  if(pv==null || pv==='') return false;
+  const ev = evaluarCampo(f, pv);
+  if(!(ev && ev.fuera)) return false;
+  if(f.key==='presenta_alarma'){
+    const a = String(prev[f.key+'_detalle']||'').trim().toLowerCase();
+    const b = String((detallesNuevos||{})[f.key]||'').trim().toLowerCase();
+    return a===b;
+  }
+  return true;
+}
 function nombreFalla(f){ return (f.labelAlerta||f.label).replace(/\s*\(display\)/,''); }
 
 function leyendaParametro(f){
@@ -1434,7 +1448,7 @@ function calcularFallasSemanas(fam, lunes0, nSem){
   rondas.forEach(i=>{
     const d = i.datos_adicionales || {};
     (cfg.fields||[]).forEach(f=>{
-      if(f.unicaAbierta) return;
+      if(f.persistente) return;
       const v = d[f.key];
       if(v==null || v==='') return;
       const ev = evaluarCampo(f, v);
@@ -1452,26 +1466,28 @@ function calcularFallasSemanas(fam, lunes0, nSem){
       fallas.push(nueva(rg.key, rg.label, i, 'dif. '+r.dif+' °C'));
     });
   });
-  // fallas que se cuentan una sola vez al aparecer (estado de estructura)
-  (cfg.fields||[]).filter(f=>f.unicaAbierta).forEach(f=>{
-    const prob = f.opcionesProblema || [];
+  // estados que persisten (filtro, alarma, estructura): el mismo problema sin corregir se cuenta una sola vez
+  (cfg.fields||[]).filter(f=>f.persistente).forEach(f=>{
     const porTag = {};
     todas.forEach(i=>{ (porTag[i.tag] = porTag[i.tag] || []).push(i); });
     Object.keys(porTag).forEach(tag=>{
       const lista = porTag[tag].slice().sort((a,b)=>a.fecha_inspeccion_d-b.fecha_inspeccion_d || String(a.created_at||'').localeCompare(String(b.created_at||'')));
       let ep = null;
       lista.forEach(i=>{
-        const v = (i.datos_adicionales||{})[f.key];
+        const d = i.datos_adicionales || {};
+        const v = d[f.key];
         if(v==null || v==='') return;
-        const tiene = String(v).split(',').map(x=>x.trim()).some(x=>prob.indexOf(x)!==-1);
-        if(!tiene){ ep = null; return; }
-        if(!ep){
-          ep = { ultimoValor:String(v) };
+        const ev = evaluarCampo(f, v);
+        if(!(ev && ev.fuera)){ ep = null; return; }
+        const mostrar = (f.key==='presenta_alarma' && d[f.key+'_detalle']) ? String(d[f.key+'_detalle']) : String(v);
+        const ident = f.key==='presenta_alarma' ? mostrar.trim().toLowerCase() : 'x';
+        if(!ep || ep.ident!==ident){
+          ep = { ultimoValor:mostrar, ident };
           if(i.fecha_inspeccion_d>=lunes0 && i.fecha_inspeccion_d<=fin){
             defs[f.key] = { label:nombreFalla(f), ley:leyendaParametro(f), unaVez:true };
-            fallas.push(nueva(f.key, nombreFalla(f), i, String(v), { ep }));
+            fallas.push(nueva(f.key, nombreFalla(f), i, mostrar, { ep }));
           }
-        } else { ep.ultimoValor = String(v); }
+        } else { ep.ultimoValor = mostrar; }
       });
     });
   });
@@ -1657,7 +1673,7 @@ function renderGraficosFallas(app, fam){
       let cab, chips;
       if(p.unaVez){
         const ult = u.items[u.items.length-1];
-        cab = 'desde '+ddmm(ult.fecha);
+        cab = u.items.length>1 ? u.items.length+' veces · la última desde '+ddmm(ult.fecha) : 'desde '+ddmm(ult.fecha);
         chips = '<span style="'+chipS+'">'+escHtml(ult.ep ? ult.ep.ultimoValor : ult.valor)+'</span>';
       } else {
         const nr = D.rondasPorTag[u.tag]||u.items.length;
@@ -4287,6 +4303,11 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
       datos_adicionales: datosGuardar,
       registrado_por: valores.quien
     };
+    let rondaPrev = null;
+    if((cfg.fields||[]).some(f=>f.persistente)){
+      const {data:pv} = await sb.from('inspecciones').select('datos_adicionales').eq('tag',tag).order('fecha_inspeccion',{ascending:false}).order('created_at',{ascending:false}).limit(1);
+      rondaPrev = (pv && pv.length) ? (pv[0].datos_adicionales||{}) : null;
+    }
     const {data:insData, error} = await sb.from('inspecciones').insert(registro).select().single();
     if(error){ formError('resumenTecnicoMsg','No se pudo guardar: '+error.message); btnConfirmar.disabled=false; return; }
     if(hayAlarma && alarmas.length){
@@ -4302,8 +4323,12 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
         estado: 'Pendiente'
       }));
       let filasNuevas = filasAlertas;
-      const unicas = (cfg.fields||[]).filter(f=>f.unicaAbierta).map(f=>f.key);
-      for(const r of filasAlertas.filter(x=>unicas.includes(x.parametro_key))){
+      const persistentes = (cfg.fields||[]).filter(f=>f.persistente);
+      const aRevisar = filasAlertas.filter(x=>{
+        const f = persistentes.find(y=>y.key===x.parametro_key);
+        return f && (f.unicaAbierta || mismoProblemaPersistente(f, rondaPrev, valores.detalles));
+      });
+      for(const r of aRevisar){
         const {data:abiertas, error:errAb} = await sb.from('alertas_inspeccion').select('id').eq('tag',tag).eq('parametro_key',r.parametro_key).neq('estado','Cerrada');
         if(errAb){ formError('resumenTecnicoMsg','Inspección guardada, pero no se pudieron revisar las alertas abiertas: '+errAb.message); btnConfirmar.disabled=false; return; }
         if(abiertas && abiertas.length){
