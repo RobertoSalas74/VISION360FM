@@ -43,6 +43,16 @@
   .brand .site small{display:block;font-family:var(--font-body);font-weight:400;font-size:11px;color:#C7CCEA;}
   header#topbar .spacer{flex:1;}
   .top-ctrl{display:flex;align-items:center;gap:6px;font-size:12px;color:#DEE1F2;}
+  .tabs-fam{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 18px;}
+  .tab-fam{background:none;border:none;padding:10px 20px;font-size:15px;font-weight:600;color:var(--text-mid);border-bottom:3px solid transparent;margin-bottom:-1px;cursor:pointer;}
+  .tab-fam:hover{color:var(--text-hi);}
+  .tab-fam.on{color:var(--text-hi);border-bottom-color:var(--sodexo-blue);}
+  .gf2{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;}
+  .gf2-det{border-top:1px solid var(--line);margin-top:12px;padding-top:12px;}
+  @media (min-width:900px){
+    .gf2.abierto{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;}
+    .gf2.abierto .gf2-det{border-top:none;margin-top:0;padding-top:0;border-left:1px solid var(--line);padding-left:16px;}
+  }
   #buscaEquipo{width:260px;max-width:100%;background:#fff;border:1px solid var(--line);color:var(--text-hi);padding:7px 10px;border-radius:6px;font-size:13px;}
   .busca-res{position:absolute;top:calc(100% + 6px);left:0;width:340px;max-width:92vw;max-height:380px;overflow:auto;background:var(--bg-card);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(20,25,50,.18);z-index:60;color:var(--text-hi);}
   .busca-res .it{padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--line);}
@@ -631,6 +641,32 @@ function updateHeaderVisibility(){
     $('#btnLogout').style.display='none';
     $('#btnRegistrar').style.display='none';
   }
+}
+
+/* ---------------- Pestañas de la página de familia ---------------- */
+function renderPestanasFamilia(app, fam, pestanas){
+  ST.pestanaFamilia = ST.pestanaFamilia || {};
+  let activa = ST.pestanaFamilia[fam];
+  if(!pestanas.some(p=>p.id===activa)) activa = pestanas[0].id;
+  const barra = el('div','tabs-fam no-print');
+  barra.setAttribute('role','tablist');
+  const cont = el('div','tabs-cont');
+  function pintar(){
+    barra.innerHTML = '';
+    pestanas.forEach(p=>{
+      const b = el('button','tab-fam'+(p.id===activa?' on':''), p.label);
+      b.type = 'button';
+      b.setAttribute('role','tab');
+      b.setAttribute('aria-selected', p.id===activa ? 'true' : 'false');
+      b.onclick = ()=>{ activa = p.id; ST.pestanaFamilia[fam] = activa; pintar(); };
+      barra.appendChild(b);
+    });
+    cont.innerHTML = '';
+    pestanas.find(p=>p.id===activa).render(cont);
+  }
+  app.appendChild(barra);
+  app.appendChild(cont);
+  pintar();
 }
 
 /* ---------------- Buscador de equipos ---------------- */
@@ -1326,8 +1362,8 @@ function renderFamily(app, fam){
   head.innerHTML = `<h2 class="view-title">${fam}</h2><p class="view-sub">Corte al ${fmtDate(isoDateInput(ST.cutoff))}</p>`;
   app.appendChild(head);
 
-  renderPanelUnificado(app, fam);
-  renderPanelActividad(app, fam);
+  const resumenCont = el('div');
+  renderPanelUnificado(resumenCont, fam);
 
   const colorVar = cls==='good'?'--good':(cls==='warn'?'--warn':'--bad');
   const top = el('div','family-top');
@@ -1337,12 +1373,12 @@ function renderFamily(app, fam){
     <div class="stat-box"><div class="v">${fmtMoney(s.gasto)}</div><div class="l">Gasto de la familia</div></div>
     <div class="stat-box"><div class="v">${s.pendientes.length}</div><div class="l">Observaciones pendientes</div></div>
   `;
-  app.appendChild(top);
+  resumenCont.appendChild(top);
 
   const chartPanel = el('div','panel');
   chartPanel.innerHTML = '<h3>Observaciones por mes — '+ST.cutoff.getFullYear()+'</h3>';
   chartPanel.appendChild(buildChart(monthlySeries(fam)));
-  app.appendChild(chartPanel);
+  resumenCont.appendChild(chartPanel);
 
   const tablePanel = el('div','panel');
   tablePanel.innerHTML = '<h3>Observaciones pendientes</h3>';
@@ -1365,7 +1401,7 @@ function renderFamily(app, fam){
     table.appendChild(tbody);
     tablePanel.appendChild(table);
   }
-  app.appendChild(tablePanel);
+  resumenCont.appendChild(tablePanel);
 
   const eqPanel = el('div','panel');
   eqPanel.innerHTML = '<h3>Equipos de la familia</h3>';
@@ -1381,7 +1417,12 @@ function renderFamily(app, fam){
     eqGrid.appendChild(chip);
   });
   eqPanel.appendChild(eqGrid);
-  app.appendChild(eqPanel);
+  resumenCont.appendChild(eqPanel);
+
+  renderPestanasFamilia(app, fam, [
+    { id:'resumen', label:'Resumen', render:c=>c.appendChild(resumenCont) },
+    { id:'actividad', label:'Actividad', render:c=>renderPanelActividad(c, fam) }
+  ]);
 
   app.appendChild(el('div','kbd-hint','<kbd>←</kbd> <kbd>→</kbd> cambiar de familia · <kbd>Esc</kbd> volver'));
 }
@@ -1661,12 +1702,12 @@ function renderGraficosFallas(app, fam){
         '<div style="font-size:16px;font-weight:700;color:var(--text-hi)">'+p.total+'</div></div>';
     }).join('');
     lista.querySelectorAll('.gfRow').forEach(r=>{ r.onclick = ()=>{ sel = (sel===r.dataset.k) ? null : r.dataset.k; pintar(); }; });
-    panelB.appendChild(lista);
-
     const p = D.params.find(x=>x.key===sel);
+    const cont2 = el('div','gf2'+(p?' abierto':''));
+    cont2.appendChild(lista);
+    panelB.appendChild(cont2);
     if(!p) return;
-    const det = el('div');
-    det.style.cssText = 'border-top:1px solid var(--line);margin-top:12px;padding-top:12px';
+    const det = el('div','gf2-det');
     const chipS = 'font-size:14px;padding:3px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg-page);color:var(--text-hi)';
     const vistos = p.umas.slice(0,MAXEQ);
     const filas = vistos.map(u=>{
@@ -1694,7 +1735,7 @@ function renderGraficosFallas(app, fam){
       (p.ley.rl ? '<div style="font-size:14px;color:var(--text-mid);margin:0 0 8px 20px">'+p.ley.rl+': <span style="font-weight:700;color:var(--text-hi)">'+escHtml(p.ley.rv)+'</span>'+(p.unaVez?' · se cuenta una vez, cuando aparece':'')+'</div>' : '')+filas+
       (resto>0 ? '<div style="padding:8px 0;border-top:1px solid var(--line);font-size:14px;color:var(--text-mid)">+'+resto+' equipos más</div>' : '');
     det.querySelectorAll('.gfEq').forEach(a=>{ a.onclick = ()=>irAEquipo(a.dataset.tag); });
-    panelB.appendChild(det);
+    cont2.appendChild(det);
   }
   pintar();
 }
@@ -1738,9 +1779,12 @@ function renderFamiliaAreas(app, familia){
   head.innerHTML = `<h2 class="view-title">${familia}</h2><p class="view-sub">Agrupados por área — ${eq0.length} equipos</p>`;
   app.appendChild(head);
 
-  renderPanelUnificado(app, familia);
-  renderPanelActividad(app, familia);
-  if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) renderGraficosFallas(app, familia);
+  const pest = [
+    { id:'resumen', label:'Resumen', render:c=>renderPanelUnificado(c, familia) },
+    { id:'actividad', label:'Actividad', render:c=>renderPanelActividad(c, familia) }
+  ];
+  if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) pest.push({ id:'tendencias', label:'Tendencias', render:c=>renderGraficosFallas(c, familia) });
+  renderPestanasFamilia(app, familia, pest);
 
   if(!areasOrdenadas.length){
     app.appendChild(el('div','empty-msg','Todavía no hay equipos cargados en '+familia+'.'));
