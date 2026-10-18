@@ -732,8 +732,9 @@ function renderConstruccion(app, fam){
 
 /* ---------------- Estatus General ---------------- */
 function renderStatus(app){
+  const nEq = equiposCriticos().length;
   const title = el('div');
-  title.innerHTML = `<h2 class="view-title">Estatus General</h2><p class="view-sub">Equipos críticos — corte al ${fmtDate(isoDateInput(ST.cutoff))}</p><p class="view-sub" style="font-size:12px;color:var(--text-low);margin-top:2px">La app se actualiza 2 veces por semana: martes y viernes.</p>`;
+  title.innerHTML = `<h2 class="view-title">Estatus General</h2><p class="view-sub">${nEq} ${nEq===1?'equipo crítico':'equipos críticos'} — corte al ${fmtDate(isoDateInput(ST.cutoff))}</p><p class="view-sub" style="font-size:12px;color:var(--text-low);margin-top:2px">La app se actualiza 2 veces por semana: martes y viernes.</p>`;
   title.style.textAlign = 'center';
   app.appendChild(title);
 
@@ -769,11 +770,10 @@ function renderStatus(app){
   const obsAbiertas = ST.observaciones.filter(o=>o.estado==='Abierta').length;
   const totals = el('div','totals-strip');
   totals.innerHTML = `
-    <div class="total-box"><div class="v">${totalEq}</div><div class="l">Equipos críticos</div></div>
     <div class="total-box"><div class="v">${obsAbiertas}</div><div class="l">Observaciones abiertas</div></div>
     <div class="total-box"><div class="v">${fmtMoney(gastoTotal)}</div><div class="l">Gasto acumulado</div></div>
   `;
-  app.appendChild(totals);
+  if(obsAbiertas>0 || gastoTotal>0) app.appendChild(totals);
   if(!familiasConDatos.length){
     app.appendChild(el('div','empty-msg','Todavía no hay equipos cargados. '+(ST.session? 'Usa "Alta de equipo" para comenzar.':'')));
   }
@@ -800,8 +800,9 @@ function renderPanelUnificado(app, fam){
   titleRow.innerHTML = `<h3 style="margin:0">${fam}${vus.vu!=null?' — vida útil: '+vus.vu+' años':''}</h3>${badgeProm}`;
   panel.appendChild(titleRow);
 
+  const correctivos = correctivosPorArea(fam);
   const grid = el('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:minmax(150px,180px) minmax(220px,1fr) minmax(180px,220px);gap:18px;margin-bottom:16px';
+  grid.style.cssText = 'display:grid;grid-template-columns:'+(correctivos.length ? 'minmax(150px,180px) minmax(220px,1fr) minmax(180px,220px)' : 'minmax(150px,180px) minmax(220px,1fr)')+';gap:18px;margin-bottom:16px';
 
   /* -------- Columna 1: dona + antigüedad -------- */
   const col1 = el('div');
@@ -845,13 +846,10 @@ function renderPanelUnificado(app, fam){
   col2.appendChild(tabla);
   grid.appendChild(col2);
 
-  /* -------- Columna 3: correctivos -------- */
-  const col3 = el('div');
-  col3.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--text-mid);margin-bottom:6px">Correctivos</div>`;
-  const correctivos = correctivosPorArea(fam);
-  if(!correctivos.length){
-    col3.innerHTML += `<div style="background:var(--bg-page);border:1px dashed var(--line);border-radius:8px;padding:14px;text-align:center;font-size:11px;color:var(--text-low)">Aún no hay correctivos registrados</div>`;
-  } else {
+  /* -------- Columna 3: correctivos (solo si hay) -------- */
+  if(correctivos.length){
+    const col3 = el('div');
+    col3.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--text-mid);margin-bottom:6px">Correctivos</div>`;
     const maxN = Math.max(...correctivos.map(c=>c.n));
     col3.innerHTML += correctivos.map(c=>`
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
@@ -861,8 +859,8 @@ function renderPanelUnificado(app, fam){
         </div>
         <div style="width:20px;font-size:10.5px;font-weight:600;text-align:right">${c.n}</div>
       </div>`).join('');
+    grid.appendChild(col3);
   }
-  grid.appendChild(col3);
 
   panel.appendChild(grid);
 
@@ -1367,15 +1365,15 @@ function renderFamily(app, fam){
   top.innerHTML = `
     <div class="stat-box"><div class="v">${s.total}</div><div class="l">Cantidad de equipos</div></div>
     <div class="stat-box"><div class="v" style="color:var(${colorVar})">${fmtPct(s.disp)}</div><div class="l">Disponibilidad</div></div>
-    <div class="stat-box"><div class="v">${fmtMoney(s.gasto)}</div><div class="l">Gasto de la familia</div></div>
-    <div class="stat-box"><div class="v">${s.pendientes.length}</div><div class="l">Observaciones pendientes</div></div>
+    ${(s.gasto>0 || s.pendientes.length>0) ? `<div class="stat-box"><div class="v">${fmtMoney(s.gasto)}</div><div class="l">Gasto de la familia</div></div>
+    <div class="stat-box"><div class="v">${s.pendientes.length}</div><div class="l">Observaciones pendientes</div></div>` : ''}
   `;
   resumenCont.appendChild(top);
 
   const chartPanel = el('div','panel');
   chartPanel.innerHTML = '<h3>Observaciones por mes — '+ST.cutoff.getFullYear()+'</h3>';
   chartPanel.appendChild(buildChart(monthlySeries(fam)));
-  resumenCont.appendChild(chartPanel);
+  if(s.obsFam.length) resumenCont.appendChild(chartPanel);
 
   const tablePanel = el('div','panel');
   tablePanel.innerHTML = '<h3>Observaciones pendientes</h3>';
@@ -1398,7 +1396,7 @@ function renderFamily(app, fam){
     table.appendChild(tbody);
     tablePanel.appendChild(table);
   }
-  resumenCont.appendChild(tablePanel);
+  if(s.pendientes.length) resumenCont.appendChild(tablePanel);
 
   const eqPanel = el('div','panel');
   eqPanel.innerHTML = '<h3>Equipos de la familia</h3>';
@@ -1492,6 +1490,7 @@ const FAMILIAS_POR_AREA = ["Compactos", "UMA's"];
 const ORDEN_AREAS_COMPACTOS = ["PA-1","PF-3","PF-4","PF-5","PI-7","PI-8","PI-9","PI-11","RECUPERADOR","SALA CHILLER","SALA RACF"];
 
 const OCULTAR_ESTADO_ALERTAS = true;
+const MOSTRAR_INDICADORES_AREA = false;
 const FAMILIAS_VISIBLES = ["Chiller","Compactos","UMA's","Torres de Enfriamiento"];
 const GRAFICOS_FALLAS_FAMILIAS = ["UMA's","Compactos"];
 const COLORES_FALLA = { temp_agua_salida:'#eb6834', descarga_aire:'#2a78d6', estado_filtro:'#1baf7a', presion_salida:'#eda100', presion_ingreso:'#e87ba4', temp_agua_entrada:'#6250d6', temp_seteada:'#eb6834', temp_interior:'#2a78d6', ciclo_enfriamiento:'#6250d6', presenta_alarma:'#e87ba4', estado_estructura:'#eda100' };
@@ -1827,11 +1826,13 @@ function renderFamiliaAreas(app, familia){
   const selOpts = ['<option value="">Indicadores por área…</option>'].concat(areasOrdenadas.map(a=>`<option value="${a}">${a}</option>`)).join('');
   const selectorWrap = el('div');
   selectorWrap.innerHTML = `<select id="selAreaIndicadores" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);min-width:180px">${selOpts}</select>`;
-  crumb.appendChild(selectorWrap);
-  selectorWrap.querySelector('#selAreaIndicadores').onchange = (e)=>{
-    if(e.target.value) go('familia-area-indicadores',{familia, area:e.target.value});
-    e.target.value = '';
-  };
+  if(MOSTRAR_INDICADORES_AREA){
+    crumb.appendChild(selectorWrap);
+    selectorWrap.querySelector('#selAreaIndicadores').onchange = (e)=>{
+      if(e.target.value) go('familia-area-indicadores',{familia, area:e.target.value});
+      e.target.value = '';
+    };
+  }
   app.appendChild(crumb);
 
   const head = el('div');
@@ -1947,7 +1948,7 @@ function renderEquipo(app, tag){
     <div class="stat-box"><div class="v">${s.tiempoProm!=null? s.tiempoProm+' d':'—'}</div><div class="l">Tiempo promedio de resolución</div></div>
     <div class="stat-box"><div class="v">${s.diasDesdeAlta!=null? s.diasDesdeAlta+' d':'—'}</div><div class="l">Días desde la fecha de alta</div></div>
   `;
-  app.appendChild(top);
+  if(s.total>0) app.appendChild(top);
 
   const cfg = familyFieldConfig(act.familia);
 
@@ -1971,7 +1972,7 @@ function renderEquipo(app, tag){
     table.appendChild(tbody);
     tlPanel.appendChild(table);
   }
-  app.appendChild(tlPanel);
+  if(s.obsEq.length) app.appendChild(tlPanel);
 
   const insEq = ST.inspecciones.filter(i=>i.tag===tag).slice().sort((a,b)=>(b.fecha_inspeccion_d-a.fecha_inspeccion_d) || (new Date(b.created_at||0)-new Date(a.created_at||0)));
   if(insEq.length){
