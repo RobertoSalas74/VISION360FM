@@ -40,6 +40,23 @@
   .brand .site small{display:block;font-family:var(--font-body);font-weight:400;font-size:11px;color:#C7CCEA;}
   header#topbar .spacer{flex:1;}
   .top-ctrl{display:flex;align-items:center;gap:6px;font-size:12px;color:#DEE1F2;}
+  .pparams{max-width:100%;}
+  .pbanner{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--warn-bg);border:1px solid var(--warn);border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:14px;color:var(--text-hi);}
+  .ptit{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);font-weight:700;margin:18px 0 8px;}
+  .pcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px 12px;margin-bottom:10px;box-shadow:0 1px 3px rgba(20,25,50,.05);}
+  .pcard-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;font-size:15px;}
+  .pmut{font-size:12px;color:var(--text-low);font-family:var(--font-mono);}
+  .pbadge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:4px;}
+  .pb-borr{background:var(--warn-bg);color:var(--warn);}
+  .pb-mod{background:#F1EBFB;color:#4B0F9E;}
+  .pb-sin{background:#ECEEF5;color:#5B6072;}
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px;}
+  .pgrid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-mid);}
+  .pgrid label.wide,.pgrid .wide{grid-column:1/-1;}
+  .pgrid input[type=text],.pgrid input[type=number],.pgrid select{padding:7px 9px;border-radius:6px;border:1px solid var(--line);font-size:14px;color:var(--text-hi);background:#fff;}
+  .pgrid .pcheck{flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--text-hi);}
+  .phint{font-size:12px;color:var(--text-low);margin-top:8px;}
+  .plista{margin:0;padding-left:18px;font-size:13px;line-height:1.6;}
   .tabs-fam{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 18px;}
   .tab-fam{background:none;border:none;padding:10px 20px;font-size:15px;font-weight:600;color:var(--text-mid);border-bottom:3px solid transparent;margin-bottom:-1px;cursor:pointer;}
   .tab-fam:hover{color:var(--text-hi);}
@@ -255,6 +272,7 @@
   </div>
   <button class="btn ghost" id="btnPrint" style="display:none">Imprimir</button>
   <button class="btn ghost" id="btnPropuestas" style="display:none">Propuestas</button>
+  <button class="btn ghost" id="btnParametros" style="display:none">Parámetros</button>
   <button class="btn primary" id="btnRegistrar" style="display:none">Registrar</button>
   <button class="btn ghost" id="btnLogin" style="display:none">Iniciar sesión</button>
   <span class="badge" id="userBadge" style="display:none"></span>
@@ -405,14 +423,15 @@ const FAMILY_FIELDS = {
         riesgo: null }
     ],
     reglas: [
-      { key: "ciclo_enfriamiento", label: "Ciclo de enfriamiento", severidad: "Alta", riesgo: null,
+      { key: "ciclo_enfriamiento", label: "Ciclo de enfriamiento", severidad: "Alta", riesgo: null, umbral: 5,
         leyendaGrafico: { rl:'Máximo', rv:'5 °C de diferencia', corta:'máximo 5 °C de diferencia' },
         eval: function(d){
           if(!d || d.temp_seteada==null || d.temp_interior==null || d.temp_seteada==='' || d.temp_interior==='') return null;
           const se = Number(d.temp_seteada), it = Number(d.temp_interior);
           if(isNaN(se) || isNaN(it)) return null;
           const dif = Math.round((it - se)*100)/100;
-          return dif > 5 ? { fuera:true, dif:dif, valor:'Interior '+it+' °C vs seteada '+se+' °C (diferencia '+dif+' °C)' } : { fuera:false };
+          const um = (this && this.umbral!=null) ? this.umbral : 5;
+          return dif > um ? { fuera:true, dif:dif, valor:'Interior '+it+' °C vs seteada '+se+' °C (diferencia '+dif+' °C)' } : { fuera:false };
         } }
     ]
   },
@@ -443,7 +462,76 @@ const FAMILY_FIELDS = {
     ]
   }
 };
-function familyFieldConfig(fam) { return FAMILY_FIELDS[fam] || { key: null, fields: [] }; }
+/* =========================================================
+   PARÁMETROS EDITABLES (los valores originales viven en el código;
+   la base guarda solo lo que el administrador cambia)
+========================================================= */
+const META_INSPECCION_BASE = { "Compactos": 1 };
+const RONDAS_POR_DIA_BASE = { "Torres de Enfriamiento": 2 };
+let _cfgCache = {};
+function ladoDe(f){ return f.alertaSoloSiSupera ? 'supera' : (f.alertaSoloSiBajo ? 'bajo' : 'ambos'); }
+function fusionarCampo(f, o){
+  if(!o || !Object.keys(o).length) return f;
+  const g = Object.assign({}, f);
+  if(o.label!==undefined){ g.label = o.label; delete g.labelAlerta; }
+  if(o.unidad!==undefined) g.unidad = o.unidad;
+  if(o.min!==undefined) g.min = o.min;
+  if(o.max!==undefined) g.max = o.max;
+  if(o.lado){ g.alertaSoloSiSupera = (o.lado==='supera'); g.alertaSoloSiBajo = (o.lado==='bajo'); }
+  if(o.severidad) g.severidad = o.severidad;
+  if(o.riesgo!==undefined) g.riesgo = o.riesgo===''?null:o.riesgo;
+  if(o.activo!==undefined) g.activo = o.activo;
+  if(o.opcionesProblema && f.opcionesProblema && !Array.isArray(f.opcionesProblema)) g.opcionesProblema = Object.assign({}, o.opcionesProblema);
+  return g;
+}
+function fusionarRegla(rg, o){
+  if(!o || !Object.keys(o).length) return rg;
+  const g = Object.assign({}, rg);
+  if(o.label!==undefined) g.label = o.label;
+  if(o.umbral!==undefined){
+    g.umbral = o.umbral;
+    g.leyendaGrafico = { rl:'Máximo', rv:o.umbral+' °C de diferencia', corta:'máximo '+o.umbral+' °C de diferencia' };
+  }
+  if(o.severidad) g.severidad = o.severidad;
+  if(o.riesgo!==undefined) g.riesgo = o.riesgo===''?null:o.riesgo;
+  return g;
+}
+function familyFieldConfig(fam){
+  const base = FAMILY_FIELDS[fam];
+  if(!base) return { key: null, fields: [] };
+  const ov = (ST.paramsLive||{})[fam];
+  if(!ov) return base;
+  if(_cfgCache[fam]) return _cfgCache[fam];
+  const cfg = Object.assign({}, base, {
+    fields: base.fields.map(f=>fusionarCampo(f, ov[f.key])),
+    reglas: (base.reglas||[]).map(r=>fusionarRegla(r, ov[r.key]))
+  });
+  _cfgCache[fam] = cfg;
+  return cfg;
+}
+function paramsFamilia(fam){
+  const o = ((ST.paramsLive||{})[fam]||{})._familia || {};
+  const b = {
+    vida_util: VIDA_UTIL[fam]!=null ? VIDA_UTIL[fam] : null,
+    meta_inspeccion: META_INSPECCION_BASE[fam]!=null ? META_INSPECCION_BASE[fam] : null,
+    rondas_por_dia: RONDAS_POR_DIA_BASE[fam]!=null ? RONDAS_POR_DIA_BASE[fam] : 1
+  };
+  return Object.assign(b, o);
+}
+function vidaUtilDe(fam){ const v = paramsFamilia(fam).vida_util; return v!=null ? v : null; }
+async function cargarParametros(){
+  let res;
+  try{ res = await sb.from('parametros_config').select('familia,clave,valor'); }catch(e){ return false; }
+  const {data, error} = res;
+  if(error) return false;
+  const m = {};
+  (data||[]).forEach(r=>{ (m[r.familia] = m[r.familia] || {})[r.clave] = r.valor; });
+  ST.paramsLive = m;
+  ST.paramsFirma = JSON.stringify((data||[]).map(r=>[r.familia, r.clave, r.valor]).sort());
+  _cfgCache = {};
+  return true;
+}
+
 
 /* =========================================================
    ESTADO
@@ -455,7 +543,8 @@ const ST = {
   view:{ screen:'loading', family:null, tag:null },
   session:null,
   modoTecnico:false,
-  familyOrder:[]
+  familyOrder:[],
+  paramsLive:{}, paramsBorrador:{}, paramsFirma:'',
 };
 
 /* =========================================================
@@ -626,6 +715,7 @@ function render(){
   else if(ST.view.screen==='tecnico-alertas') renderTecnicoAlertas(app);
   else if(ST.view.screen==='propuestas') renderPropuestas(app);
   else if(ST.view.screen==='construccion') renderConstruccion(app, ST.view.familia);
+  else if(ST.view.screen==='parametros') renderParametros(app);
   else renderStatus(app);
   updateHeaderVisibility();
 }
@@ -635,6 +725,7 @@ function updateHeaderVisibility(){
   if(ST.modoTecnico){
     $('#cutoffWrap').style.display='none';
     $('#buscaWrap').style.display='none';
+    $('#btnParametros').style.display='none';
     $('#btnPrint').style.display='none';
     $('#btnRegistrar').style.display='none';
     $('#btnLogin').style.display='none';
@@ -647,6 +738,7 @@ function updateHeaderVisibility(){
   $('#tecnicoLinkWrap').style.display = ST.session ? 'none' : 'block';
   $('#cutoffWrap').style.display='flex';
   $('#buscaWrap').style.display='flex';
+  $('#btnParametros').style.display = (ST.session && esAdmin()) ? 'inline-flex' : 'none';
   $('#btnPrint').style.display='inline-flex';
   if(ST.session){
     $('#btnLogin').style.display='none';
@@ -660,6 +752,379 @@ function updateHeaderVisibility(){
     $('#btnLogout').style.display='none';
     $('#btnRegistrar').style.display='none';
   }
+}
+
+/* =========================================================
+   MODO ADMINISTRADOR — PANTALLA "PARÁMETROS"
+========================================================= */
+function estable(o){
+  if(o===null || typeof o!=='object') return JSON.stringify(o===undefined?null:o);
+  if(Array.isArray(o)) return '['+o.map(estable).join(',')+']';
+  return '{'+Object.keys(o).sort().map(k=>JSON.stringify(k)+':'+estable(o[k])).join(',')+'}';
+}
+function iguales(a,b){ return estable(a)===estable(b); }
+function baseDe(fam, clave){
+  const c = FAMILY_FIELDS[fam];
+  if(!c) return null;
+  return (c.fields||[]).find(f=>f.key===clave) || (c.reglas||[]).find(r=>r.key===clave) || null;
+}
+function valorBase(fam, clave, prop){
+  if(clave==='_familia'){
+    if(prop==='vida_util') return VIDA_UTIL[fam]!=null ? VIDA_UTIL[fam] : null;
+    if(prop==='meta_inspeccion') return META_INSPECCION_BASE[fam]!=null ? META_INSPECCION_BASE[fam] : null;
+    if(prop==='rondas_por_dia') return RONDAS_POR_DIA_BASE[fam]!=null ? RONDAS_POR_DIA_BASE[fam] : 1;
+    return null;
+  }
+  const b = baseDe(fam, clave) || {};
+  if(prop==='label') return b.label;
+  if(prop==='unidad') return b.unidad!==undefined ? b.unidad : '';
+  if(prop==='min') return b.min!=null ? b.min : null;
+  if(prop==='max') return b.max!=null ? b.max : null;
+  if(prop==='lado') return ladoDe(b);
+  if(prop==='severidad') return b.severidad || 'Alta';
+  if(prop==='riesgo') return b.riesgo || '';
+  if(prop==='activo') return true;
+  if(prop==='umbral') return b.umbral;
+  if(prop==='opcionesProblema') return b.opcionesProblema;
+  return undefined;
+}
+function ovLive(fam, clave){ const l = (ST.paramsLive||{})[fam]; return (l && l[clave]) || null; }
+function hayBorrador(fam, clave){ const d = (ST.paramsBorrador||{})[fam]; return !!(d && Object.prototype.hasOwnProperty.call(d, clave)); }
+function ovVigente(fam, clave){
+  const d = (ST.paramsBorrador||{})[fam];
+  if(d && Object.prototype.hasOwnProperty.call(d, clave)) return d[clave];
+  return ovLive(fam, clave) || {};
+}
+function nCambiosBorrador(){ let n = 0; Object.values(ST.paramsBorrador||{}).forEach(o=>{ n += Object.keys(o).length; }); return n; }
+async function cargarBorrador(){
+  let res;
+  try{ res = await sb.from('parametros_borrador').select('familia,clave,valor'); }catch(e){ ST.paramsError = e.message; return false; }
+  if(res.error){ ST.paramsError = res.error.message; return false; }
+  const m = {};
+  (res.data||[]).forEach(r=>{ (m[r.familia] = m[r.familia] || {})[r.clave] = r.valor; });
+  ST.paramsBorrador = m; ST.paramsError = null;
+  return true;
+}
+function validarOverride(fam, clave, ov){
+  const b = baseDe(fam, clave) || {};
+  const num = v=>(typeof v==='number' && isFinite(v));
+  if(ov.label!==undefined && (!String(ov.label).trim() || String(ov.label).length>80)) return 'El nombre no puede estar vacío ni pasar de 80 caracteres.';
+  if(ov.unidad!==undefined && String(ov.unidad).length>20) return 'La unidad no puede pasar de 20 caracteres.';
+  if(ov.riesgo!==undefined && String(ov.riesgo).length>300) return 'El texto de riesgo no puede pasar de 300 caracteres.';
+  if(ov.min!==undefined && ov.min!==null && !num(ov.min)) return 'El mínimo debe ser un número.';
+  if(ov.max!==undefined && ov.max!==null && !num(ov.max)) return 'El máximo debe ser un número.';
+  const mn = ov.min!==undefined ? ov.min : (b.min!=null ? b.min : null);
+  const mx = ov.max!==undefined ? ov.max : (b.max!=null ? b.max : null);
+  if(mn!==null && mx!==null && mn>=mx) return 'El mínimo debe ser menor que el máximo.';
+  if(ov.umbral!==undefined && !(num(ov.umbral) && ov.umbral>0)) return 'La diferencia máxima debe ser un número mayor que 0.';
+  if(ov.vida_util!==undefined && !(num(ov.vida_util) && Number.isInteger(ov.vida_util) && ov.vida_util>=1 && ov.vida_util<=100)) return 'La vida útil debe ser un número entero de años entre 1 y 100.';
+  if(ov.meta_inspeccion!==undefined && ov.meta_inspeccion!==null && !(num(ov.meta_inspeccion) && ov.meta_inspeccion>0)) return 'La meta de inspección debe ser un número mayor que 0.';
+  if(ov.rondas_por_dia!==undefined && !(num(ov.rondas_por_dia) && Number.isInteger(ov.rondas_por_dia) && ov.rondas_por_dia>=1 && ov.rondas_por_dia<=10)) return 'Las rondas por día deben ser un entero entre 1 y 10.';
+  return null;
+}
+async function guardarOverride(fam, clave, ov){
+  const err = validarOverride(fam, clave, ov);
+  if(err) return err;
+  const live = ovLive(fam, clave) || {};
+  let r;
+  if(iguales(ov, live)){
+    r = await sb.from('parametros_borrador').delete().eq('familia', fam).eq('clave', clave);
+    if(!r.error && ST.paramsBorrador[fam]){
+      delete ST.paramsBorrador[fam][clave];
+      if(!Object.keys(ST.paramsBorrador[fam]).length) delete ST.paramsBorrador[fam];
+    }
+  } else {
+    r = await sb.from('parametros_borrador').upsert({ familia:fam, clave, valor:ov }, { onConflict:'familia,clave' });
+    if(!r.error) (ST.paramsBorrador[fam] = ST.paramsBorrador[fam] || {})[clave] = ov;
+  }
+  return r.error ? 'No se pudo guardar: '+r.error.message : null;
+}
+async function cambiarProp(fam, clave, prop, valor){
+  const ov = Object.assign({}, ovVigente(fam, clave));
+  if(iguales(valor, valorBase(fam, clave, prop))) delete ov[prop]; else ov[prop] = valor;
+  return guardarOverride(fam, clave, ov);
+}
+async function restaurarClave(fam, clave){ return guardarOverride(fam, clave, {}); }
+async function restaurarFamilia(fam){
+  const claves = {};
+  Object.keys((ST.paramsLive||{})[fam]||{}).forEach(k=>{ claves[k] = 1; });
+  Object.keys((ST.paramsBorrador||{})[fam]||{}).forEach(k=>{ claves[k] = 1; });
+  for(const k of Object.keys(claves)){
+    const e = await restaurarClave(fam, k);
+    if(e) return e;
+  }
+  return null;
+}
+async function descartarBorrador(){
+  const r = await sb.from('parametros_borrador').delete().neq('familia','__ninguna__');
+  if(r.error) return r.error.message;
+  ST.paramsBorrador = {};
+  return null;
+}
+
+/* ---- textos legibles ---- */
+const PROP_NOMBRE = { label:'Nombre', unidad:'Unidad', min:'Mínimo', max:'Máximo', lado:'Cuándo alerta', severidad:'Color', riesgo:'Texto de riesgo', activo:'Se pide en el formulario', opcionesProblema:'Opciones con alerta', umbral:'Diferencia máxima', vida_util:'Vida útil (años)', meta_inspeccion:'Meta de inspección', rondas_por_dia:'Rondas por día' };
+function fmtVal(prop, v){
+  if(v===null || v===undefined) return 'sin definir';
+  if(prop==='activo') return v ? 'sí' : 'no';
+  if(prop==='severidad') return v==='Alta' ? 'Roja' : 'Amarilla';
+  if(prop==='lado') return v==='supera' ? 'solo si supera el máximo' : (v==='bajo' ? 'solo si está bajo el mínimo' : 'fuera del rango (ambos lados)');
+  if(prop==='opcionesProblema'){ const e = Object.entries(v||{}).map(([k,s])=>k+': '+(s==='Alta'?'Roja':'Amarilla')); return e.length ? e.join(', ') : 'ninguna'; }
+  if(v==='') return 'vacío';
+  return String(v);
+}
+function nombreClave(fam, clave){
+  if(clave==='_familia') return 'Ajustes de la familia';
+  const b = baseDe(fam, clave);
+  return b ? nombreFalla(b) : clave;
+}
+function describirCambio(fam, clave, antes, despues){
+  const d = despues || {};
+  if(!Object.keys(d).length) return 'Vuelve a los valores originales';
+  const props = Array.from(new Set(Object.keys(antes||{}).concat(Object.keys(d))));
+  return props.map(p=>{
+    const a = (antes||{})[p], n = d[p];
+    if(iguales(a, n)) return null;
+    return (PROP_NOMBRE[p]||p)+': '+fmtVal(p, a===undefined ? valorBase(fam, clave, p) : a)+' → '+fmtVal(p, n===undefined ? valorBase(fam, clave, p) : n);
+  }).filter(Boolean).join(' · ') || 'Sin diferencias';
+}
+function resumenCambios(){
+  const out = [];
+  Object.keys(ST.paramsBorrador||{}).forEach(fam=>{
+    Object.keys(ST.paramsBorrador[fam]).forEach(clave=>{
+      out.push({ fam, clave, nombre:nombreClave(fam, clave), texto:describirCambio(fam, clave, ovLive(fam, clave)||{}, ST.paramsBorrador[fam][clave]) });
+    });
+  });
+  return out;
+}
+/* ---- impacto sobre lo ya registrado (solo cálculo, no modifica nada) ---- */
+function mezclarVivo(){
+  const m = JSON.parse(JSON.stringify(ST.paramsLive||{}));
+  Object.keys(ST.paramsBorrador||{}).forEach(fam=>{
+    Object.keys(ST.paramsBorrador[fam]).forEach(clave=>{
+      const v = ST.paramsBorrador[fam][clave];
+      if(!Object.keys(v).length){ if(m[fam]){ delete m[fam][clave]; if(!Object.keys(m[fam]).length) delete m[fam]; } }
+      else (m[fam] = m[fam] || {})[clave] = v;
+    });
+  });
+  return m;
+}
+function contarHistorial(fam){
+  const tags = new Set(equiposCriticos().filter(a=>a.familia===fam).map(a=>a.tag));
+  const rondas = ST.inspecciones.filter(i=>tags.has(i.tag) && i.fecha_inspeccion_d);
+  const porClave = {};
+  if(rondas.length){
+    const primera = inicioSemana(rondas.reduce((m,i)=>i.fecha_inspeccion_d<m?i.fecha_inspeccion_d:m, rondas[0].fecha_inspeccion_d));
+    const hoy = inicioSemana(ST.cutoff);
+    const nSem = Math.max(1, Math.round(daysBetween(primera, hoy)/7)+1);
+    calcularFallasSemanas(fam, primera, nSem).params.forEach(p=>{ porClave[p.key] = { label:p.label, total:p.total }; });
+  }
+  const vu = vidaUtilFamiliaStats(fam);
+  return { porClave, fuera:vu.fuera, proximo:vu.proximo, vida:vidaUtilDe(fam) };
+}
+function impactoHistorico(){
+  const vivo = ST.paramsLive;
+  const out = [];
+  Object.keys(ST.paramsBorrador||{}).forEach(fam=>{
+    const antes = contarHistorial(fam);
+    ST.paramsLive = mezclarVivo(); _cfgCache = {};
+    const despues = contarHistorial(fam);
+    ST.paramsLive = vivo; _cfgCache = {};
+    const lineas = [];
+    const claves = Array.from(new Set(Object.keys(antes.porClave).concat(Object.keys(despues.porClave))));
+    claves.forEach(k=>{
+      const a = antes.porClave[k] ? antes.porClave[k].total : 0, d = despues.porClave[k] ? despues.porClave[k].total : 0;
+      if(a!==d) lineas.push((antes.porClave[k]||despues.porClave[k]).label+': '+a+' → '+d+' alertas');
+    });
+    if(antes.fuera!==despues.fuera) lineas.push('Equipos fuera de su vida útil: '+antes.fuera+' → '+despues.fuera);
+    out.push({ fam, lineas });
+  });
+  return out;
+}
+
+/* ---- construcción de la pantalla ---- */
+function lab(t, inner, cls){ return '<label'+(cls?' class="'+cls+'"':'')+'><span>'+t+'</span>'+inner+'</label>'; }
+function optSev(v){ return '<option value="Media"'+(v==='Media'?' selected':'')+'>Amarilla</option><option value="Alta"'+(v==='Alta'?' selected':'')+'>Roja</option>'; }
+function insigniaParam(fam, clave){
+  if(hayBorrador(fam, clave)) return '<span class="pbadge pb-borr">Borrador</span>';
+  if(ovLive(fam, clave)) return '<span class="pbadge pb-mod">Modificado</span>';
+  return '';
+}
+function cabeceraParam(fam, clave, nombre, extra){
+  const marca = hayBorrador(fam, clave) || ovLive(fam, clave);
+  return '<div class="pcard-h"><div><b>'+escHtml(nombre)+'</b> <span class="pmut">'+escHtml(clave)+'</span> '+insigniaParam(fam, clave)+(extra||'')+'</div>'+
+    (marca ? '<button type="button" class="btn ghost pRest">Restaurar</button>' : '')+'</div>';
+}
+function htmlCampo(fam, f0){
+  const f = fusionarCampo(f0, ovVigente(fam, f0.key));
+  let c = lab('Nombre','<input type="text" data-prop="label" value="'+escHtml(f.label)+'">');
+  if(f.tipo==='numerico'){
+    c += lab('Unidad','<input type="text" data-prop="unidad" value="'+escHtml(f.unidad||'')+'">');
+    c += lab('Mínimo','<input type="number" step="any" data-prop="min" data-num="1" value="'+(f.min!=null?f.min:'')+'">');
+    c += lab('Máximo','<input type="number" step="any" data-prop="max" data-num="1" value="'+(f.max!=null?f.max:'')+'">');
+    const l = ladoDe(f);
+    c += lab('Cuándo alerta','<select data-prop="lado"><option value="ambos"'+(l==='ambos'?' selected':'')+'>Fuera del rango (ambos lados)</option><option value="supera"'+(l==='supera'?' selected':'')+'>Solo si supera el máximo</option><option value="bajo"'+(l==='bajo'?' selected':'')+'>Solo si está bajo el mínimo</option></select>');
+    c += lab('Color de la alerta','<select data-prop="severidad">'+optSev(f.severidad||'Alta')+'</select>');
+  } else if(f.tipo==='select' && f.opcionesProblema && !Array.isArray(f.opcionesProblema)){
+    c += (f.opciones||[]).map(o=>{ const sv = f.opcionesProblema[o] || ''; return lab(o,'<select data-prop="opcion" data-opcion="'+escHtml(o)+'"><option value=""'+(sv===''?' selected':'')+'>Sin alerta</option>'+optSev(sv)+'</select>'); }).join('');
+  } else if(f.tipo==='select' && f.opcionProblema){
+    c += lab('Color cuando es "'+escHtml(f.opcionProblema)+'"','<select data-prop="severidad">'+optSev(f.severidad||'Alta')+'</select>');
+  } else if(f.tipo==='multiselect'){
+    c += lab('Color de la alerta','<select data-prop="severidad">'+optSev(f.severidad||'Media')+'</select>');
+  }
+  c += lab('Texto de riesgo','<input type="text" data-prop="riesgo" value="'+escHtml(f.riesgo||'')+'">','wide');
+  c += '<label class="pcheck wide"><input type="checkbox" data-prop="activo"'+(f.activo!==false?' checked':'')+'> Se pide en el formulario del técnico</label>';
+  const sinRango = f.tipo==='numerico' && f.min==null && f.max==null ? '<div class="phint">Sin rango definido: este parámetro solo registra el dato y no genera alertas.</div>' : '';
+  return '<div class="pcard" data-clave="'+escHtml(f0.key)+'">'+cabeceraParam(fam, f0.key, f.label)+'<div class="pgrid">'+c+'</div>'+sinRango+'<div class="form-msg err hidden perr"></div></div>';
+}
+function htmlRegla(fam, r0){
+  const r = fusionarRegla(r0, ovVigente(fam, r0.key));
+  let c = lab('Diferencia máxima (°C)','<input type="number" step="any" data-prop="umbral" data-num="1" value="'+r.umbral+'">');
+  c += lab('Color de la alerta','<select data-prop="severidad">'+optSev(r.severidad||'Alta')+'</select>');
+  c += lab('Texto de riesgo','<input type="text" data-prop="riesgo" value="'+escHtml(r.riesgo||'')+'">','wide');
+  return '<div class="pcard" data-clave="'+escHtml(r0.key)+'">'+cabeceraParam(fam, r0.key, r.label, ' <span class="pmut">regla</span>')+'<div class="pgrid">'+c+'</div><div class="form-msg err hidden perr"></div></div>';
+}
+function htmlFamilia(fam){
+  const o = ovVigente(fam, '_familia');
+  const v = (p)=>{ const x = o[p]!==undefined ? o[p] : valorBase(fam, '_familia', p); return x===null||x===undefined ? '' : x; };
+  const sinUso = ' <span class="pbadge pb-sin">Aún sin uso</span>';
+  let c = lab('Vida útil de referencia (años)','<input type="number" step="1" data-prop="vida_util" data-num="1" value="'+v('vida_util')+'">');
+  c += lab('Meta de inspección (por semana, por equipo)'+sinUso,'<input type="number" step="any" data-prop="meta_inspeccion" data-num="1" value="'+v('meta_inspeccion')+'">');
+  c += lab('Rondas por día'+sinUso,'<input type="number" step="1" data-prop="rondas_por_dia" data-num="1" value="'+v('rondas_por_dia')+'">');
+  return '<div class="pcard" data-clave="_familia">'+cabeceraParam(fam, '_familia', 'Ajustes de la familia')+'<div class="pgrid">'+c+'</div><div class="phint">La vida útil se usa en el Resumen y en la ficha de cada equipo. La meta y las rondas por día todavía no se muestran en ninguna pantalla.</div><div class="form-msg err hidden perr"></div></div>';
+}
+function pintarContenidoFamilia(cont, fam){
+  const cfg = FAMILY_FIELDS[fam];
+  let h = '<div class="ptit">Familia</div>'+htmlFamilia(fam)+'<div class="ptit">Parámetros de inspección</div>';
+  h += (cfg.fields||[]).map(f=>htmlCampo(fam, f)).join('');
+  if((cfg.reglas||[]).length) h += '<div class="ptit">Reglas</div>'+cfg.reglas.map(r=>htmlRegla(fam, r)).join('');
+  h += '<div style="margin-top:14px"><button type="button" class="btn ghost" id="pRestFam">Restaurar valores originales de '+escHtml(fam)+'</button></div>';
+  cont.innerHTML = h;
+  if(ST.paramErr){
+    const c = cont.querySelector('.pcard[data-clave="'+ST.paramErr.clave+'"] .perr');
+    if(c){ c.classList.remove('hidden'); c.textContent = ST.paramErr.texto; }
+  }
+  cont.querySelectorAll('.pRest').forEach(b=>{ b.onclick = async ()=>{
+    const clave = b.closest('.pcard').dataset.clave;
+    const e = await restaurarClave(fam, clave);
+    ST.paramErr = e ? { clave, texto:e } : null;
+    pintarParametros();
+  }; });
+  const rf = cont.querySelector('#pRestFam');
+  if(rf) rf.onclick = async ()=>{ const e = await restaurarFamilia(fam); ST.paramErr = null; if(e) ST.paramMsg = e; pintarParametros(); };
+  cont.onchange = async (e)=>{
+    const t = e.target, card = t.closest('.pcard');
+    if(!card || !t.dataset.prop) return;
+    const clave = card.dataset.clave, prop = t.dataset.prop;
+    let valor;
+    if(t.type==='checkbox') valor = t.checked;
+    else if(t.dataset.num){
+      const raw = t.value.trim();
+      if(raw===''){ valor = (prop==='meta_inspeccion'||prop==='min'||prop==='max') ? null : undefined; }
+      else { valor = Number(raw); if(!isFinite(valor)){ ST.paramErr = { clave, texto:'Escribe un número.' }; pintarParametros(); return; } }
+    } else valor = t.value;
+    let propFinal = prop;
+    if(prop==='opcion'){
+      const f = fusionarCampo(baseDe(fam, clave), ovVigente(fam, clave));
+      const mapa = Object.assign({}, f.opcionesProblema||{});
+      if(t.value==='') delete mapa[t.dataset.opcion]; else mapa[t.dataset.opcion] = t.value;
+      propFinal = 'opcionesProblema'; valor = mapa;
+    }
+    if(valor===undefined){ ST.paramErr = { clave, texto:'Este campo no puede quedar vacío.' }; pintarParametros(); return; }
+    const err = await cambiarProp(fam, clave, propFinal, valor);
+    ST.paramErr = err ? { clave, texto:err } : null;
+    pintarParametros();
+  };
+}
+function fmtFechaHora(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return '—';
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+async function pintarRegistro(cont){
+  cont.innerHTML = '<div class="empty-msg">Cargando registro…</div>';
+  const r = await sb.from('parametros_cambios').select('*').order('aplicado_en',{ascending:false}).limit(100);
+  if(r.error){ cont.innerHTML = '<div class="empty-msg">No se pudo cargar el registro: '+escHtml(r.error.message)+'</div>'; return; }
+  const filas = r.data||[];
+  if(!filas.length){ cont.innerHTML = '<div class="empty-msg">Todavía no se ha aplicado ningún cambio.</div>'; return; }
+  cont.innerHTML = '<table class="obs-table"><thead><tr><th>Fecha</th><th>Quién</th><th>Familia</th><th>Parámetro</th><th>Cambio</th></tr></thead><tbody>'+
+    filas.map(x=>'<tr><td>'+fmtFechaHora(x.aplicado_en)+'</td><td>'+escHtml(x.aplicado_por)+'</td><td>'+escHtml(x.familia)+'</td><td>'+escHtml(nombreClave(x.familia, x.clave))+'</td><td>'+escHtml(describirCambio(x.familia, x.clave, x.antes||{}, x.despues||{}))+(x.motivo?' <span class="pmut">· '+escHtml(x.motivo)+'</span>':'')+'</td></tr>').join('')+'</tbody></table>';
+}
+function abrirImpacto(){
+  const cambios = resumenCambios();
+  const impacto = impactoHistorico();
+  const lista = cambios.map(c=>'<li><b>'+escHtml(c.fam)+' · '+escHtml(c.nombre)+':</b> '+escHtml(c.texto)+'</li>').join('');
+  const imp = impacto.map(i=>'<li><b>'+escHtml(i.fam)+':</b> '+(i.lineas.length ? i.lineas.map(escHtml).join(' · ') : 'sin cambios en las alertas del historial')+'</li>').join('');
+  openModal(`
+    <div class="modal-head"><h3>Aplicar cambios</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
+    <div style="font-size:14px">
+      <p style="margin:0 0 6px"><b>Qué cambia</b> (${cambios.length})</p><ul class="plista">${lista}</ul>
+      <p style="margin:12px 0 6px"><b>Efecto en lo ya registrado</b> (solo cálculo, no se modifica nada)</p><ul class="plista">${imp}</ul>
+      <p class="phint" style="margin-top:10px">Al aplicar: el formulario del técnico y las alertas de las rondas nuevas usan los valores nuevos desde ese momento, y los gráficos de Tendencias recalculan también el historial. Las alertas ya guardadas (Actividad) y el resultado OK o ALARMA de cada ronda no se modifican todavía: eso llega con la actualización del historial.</p>
+      <label style="display:block;margin-top:10px;font-size:13px;color:var(--text-mid)">Motivo del cambio (opcional)<input type="text" id="pMotivo" maxlength="120" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--line);margin-top:4px"></label>
+      <div class="form-msg hidden" id="pAplicarMsg"></div>
+      <div class="form-actions"><button type="button" class="btn" onclick="window.__closeModal()">Cancelar</button><button type="button" class="btn primary" id="pAplicarOk">Aplicar cambios</button></div>
+    </div>`);
+  $('#pAplicarOk').onclick = async ()=>{
+    $('#pAplicarOk').disabled = true;
+    const r = await sb.rpc('aplicar_parametros', { p_motivo: ($('#pMotivo').value||'').trim() || null });
+    if(r.error){ formError('pAplicarMsg', r.error.message); $('#pAplicarOk').disabled = false; return; }
+    await cargarParametros(); await cargarBorrador();
+    const n = r.data && r.data.aplicados!=null ? r.data.aplicados : cambios.length;
+    ST.paramMsg = n+(n===1?' cambio aplicado.':' cambios aplicados.')+' Ya rigen para todos.';
+    closeModal(); pintarParametros();
+  };
+}
+function pintarParametros(){
+  const raiz = ST.paramsRaiz;
+  if(!raiz || !raiz.isConnected) return;
+  raiz.innerHTML = '';
+  const fams = FAMILIAS_VISIBLES.filter(f=>FAMILY_FIELDS[f]);
+  if(!ST.paramTab || (ST.paramTab!=='__registro' && fams.indexOf(ST.paramTab)===-1)) ST.paramTab = fams[0];
+  const n = nCambiosBorrador();
+  const cab = el('div');
+  cab.innerHTML = '<h2 class="view-title">Parámetros</h2><p class="view-sub">Solo administradores. Los cambios quedan en borrador hasta que los apliques.</p>';
+  raiz.appendChild(cab);
+  if(ST.paramsError){
+    raiz.appendChild(el('div','form-msg err','No se pudo leer la configuración: '+escHtml(ST.paramsError)));
+  }
+  if(ST.paramMsg){ raiz.appendChild(el('div','form-msg ok',escHtml(ST.paramMsg))); ST.paramMsg = null; }
+  if(n>0){
+    const b = el('div','pbanner');
+    b.innerHTML = '<span>Hay <b>'+n+'</b> '+(n===1?'cambio':'cambios')+' sin aplicar. Todavía no rigen para nadie.</span><span><button type="button" class="btn primary" id="pbVer">Ver impacto y aplicar</button> <button type="button" class="btn ghost" id="pbDesc">Descartar borrador</button></span>';
+    raiz.appendChild(b);
+    b.querySelector('#pbVer').onclick = abrirImpacto;
+    b.querySelector('#pbDesc').onclick = async ()=>{ const e = await descartarBorrador(); if(e) ST.paramMsg = e; ST.paramErr = null; pintarParametros(); };
+  }
+  const barra = el('div','tabs-fam no-print');
+  const todas = fams.map(f=>({id:f,label:f})).concat([{id:'__registro',label:'Registro de cambios'}]);
+  todas.forEach(t=>{
+    const bt = el('button','tab-fam'+(t.id===ST.paramTab?' on':''),escHtml(t.label));
+    bt.type = 'button';
+    bt.onclick = ()=>{ ST.paramTab = t.id; ST.paramErr = null; pintarParametros(); };
+    barra.appendChild(bt);
+  });
+  raiz.appendChild(barra);
+  const cont = el('div','pcont');
+  raiz.appendChild(cont);
+  if(ST.paramTab==='__registro') pintarRegistro(cont);
+  else pintarContenidoFamilia(cont, ST.paramTab);
+}
+function renderParametros(app){
+  const crumb = el('div','crumb');
+  const back = el('button',null,'&larr; Estatus general');
+  back.onclick = ()=>go('status');
+  crumb.appendChild(back);
+  app.appendChild(crumb);
+  if(!esAdmin()){
+    app.appendChild(el('div','empty-msg','Esta pantalla es solo para administradores.'));
+    return;
+  }
+  const raiz = el('div','pparams');
+  app.appendChild(raiz);
+  ST.paramsRaiz = raiz;
+  raiz.innerHTML = '<div class="empty-msg">Cargando…</div>';
+  (async()=>{ await cargarBorrador(); pintarParametros(); })();
 }
 
 /* ---------------- Pestañas de la página de familia ---------------- */
@@ -1446,7 +1911,7 @@ function renderFamily(app, fam){
 
 /* ---------------- Vida útil en la ficha del equipo ---------------- */
 function panelVidaUtil(act){
-  const vu = VIDA_UTIL[act.familia] || null;
+  const vu = vidaUtilDe(act.familia);
   const antig = antiguedadDe(act);
   const anios = n => n+(n===1?' año':' años');
   const panel = el('div','panel');
@@ -2456,7 +2921,7 @@ function estadoVidaUtil(antig, vidaUtil){
   return 'dentro';
 }
 function vidaUtilFamiliaStats(fam){
-  const vu = VIDA_UTIL[fam] || null;
+  const vu = vidaUtilDe(fam);
   const eq = equiposCriticos().filter(a=>a.familia===fam);
   let dentro=0, proximo=0, fuera=0, sinDato=0;
   const porAnio = {};
@@ -3916,6 +4381,7 @@ async function iniciar(){
   ST.session = session;
   try{
     await cargarTodo();
+    await cargarParametros();
     await cargarPropuestas();
   }catch(err){
     app.innerHTML = '<div class="center-card"><h1>No se pudo cargar la información</h1><p>'+err.message+'</p></div>';
@@ -4182,7 +4648,7 @@ function evaluarCampo(f, valor){
       return sev ? { fuera:true, riesgo: f.riesgo || null, severidad: sev } : { fuera:false };
     }
     if(valor===f.opcionProblema){
-      return { fuera:true, riesgo: f.riesgo || null };
+      return { fuera:true, riesgo: f.riesgo || null, severidad: f.severidad };
     }
     return { fuera:false };
   }
@@ -4207,7 +4673,8 @@ function renderTecnicoForm(app, tag, valoresPrevios){
     <div style="display:inline-block;background:var(--bg-page);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--text-mid);margin-top:6px">Registrando: ${diaTxt}</div>`;
   app.appendChild(head);
 
-  const cfg = familyFieldConfig(act.familia);
+  const cfgCompleto = familyFieldConfig(act.familia);
+  const cfg = Object.assign({}, cfgCompleto, { fields: cfgCompleto.fields.filter(f=>f.activo!==false) });
   const vp = valoresPrevios || {};
   const vpCampos = vp.datosAdicionales || {};
   const vpDetalles = vp.detalles || {};
@@ -4481,6 +4948,12 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
   btnConfirmar.className = 'btn primary';
   btnConfirmar.onclick = async ()=>{
     btnConfirmar.disabled = true;
+    const firmaAntes = ST.paramsFirma;
+    const okParams = await cargarParametros();
+    if(okParams && ST.paramsFirma!==firmaAntes){
+      formError('resumenTecnicoMsg','Los parámetros cambiaron mientras llenabas el formulario. Vuelve a abrir el equipo y regístralo de nuevo.');
+      btnConfirmar.disabled = false; return;
+    }
     const datosGuardar = Object.assign({}, valores.datosAdicionales);
     Object.keys(valores.detalles).forEach(k=>{ datosGuardar[k+'_detalle'] = valores.detalles[k]; });
     Object.keys(valores.detalles2||{}).forEach(k=>{ datosGuardar[k+'_detalle2'] = valores.detalles2[k]; });
@@ -4558,6 +5031,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnPrint').addEventListener('click', ()=>window.print());
   $('#btnRegistrar').addEventListener('click', openCaptureMenu);
   $('#btnPropuestas').addEventListener('click', async ()=>{ await cargarPropuestas(); go('propuestas'); });
+  $('#btnParametros').addEventListener('click', ()=>go('parametros'));
   $('#btnLogin').addEventListener('click', openLoginModal);
   $('#btnLogout').addEventListener('click', async ()=>{
     await sb.auth.signOut();
