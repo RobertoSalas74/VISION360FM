@@ -580,6 +580,7 @@ async function cargarTodo(){
   if(e1 || e2 || e3 || e4 || e5){
     throw new Error((e1&&e1.message)||(e2&&e2.message)||(e3&&e3.message)||(e4&&e4.message)||(e5&&e5.message)||'Error desconocido');
   }
+  ST.nAlertasTotal = (alertas||[]).length; ST.nRondasTotal = (inspecciones||[]).length;
   const ocultos = new Set((activos||[]).filter(a=>FAMILIAS_VISIBLES.indexOf(a.familia)===-1).map(a=>a.tag));
   ST.activos = (activos||[]).filter(a=>!ocultos.has(a.tag));
   ST.observaciones = (observaciones||[]).filter(o=>!ocultos.has(o.tag)).map(o=>({...o, fecha_observacion_d:parseDate(o.fecha_observacion), fecha_cierre_d:parseDate(o.fecha_cierre)}));
@@ -877,12 +878,14 @@ function fmtVal(prop, v){
   return String(v);
 }
 function nombreClave(fam, clave){
+  if(clave==='_historial') return 'Actualización del historial';
   if(clave==='_familia') return 'Ajustes de la familia';
   const b = baseDe(fam, clave);
   return b ? nombreFalla(b) : clave;
 }
 function describirCambio(fam, clave, antes, despues){
   const d = despues || {};
+  if(clave==='_historial') return (d.creadas||0)+' alertas creadas, '+(d.eliminadas||0)+' eliminadas, '+(d.actualizadas||0)+' actualizadas, '+(d.rondas||0)+' rondas con resultado nuevo (lote '+(d.lote||'—')+')';
   if(!Object.keys(d).length) return 'Vuelve a los valores originales';
   const props = Array.from(new Set(Object.keys(antes||{}).concat(Object.keys(d))));
   return props.map(p=>{
@@ -943,6 +946,171 @@ function impactoHistorico(){
     out.push({ fam, lineas });
   });
   return out;
+}
+
+/* =========================================================
+   ENTREGA 2 — ACTUALIZAR EL HISTORIAL CON LAS REGLAS VIGENTES
+   (la app calcula el plan; la base de datos lo ejecuta con sus propias comprobaciones)
+========================================================= */
+function evaluarRonda(cfg, d){
+  const np = [], pe = {};
+  (cfg.fields||[]).forEach(f=>{
+    const v = d[f.key];
+    if(v==null || v==='') return;
+    const ev = evaluarCampo(f, v);
+    if(!(ev && ev.fuera)) return;
+    const det = d[f.key+'_detalle'], det2 = d[f.key+'_detalle2'];
+    const alerta = { key:f.key, label:f.labelAlerta||f.label, valor:String(v)+(det?' ('+det+')':''), riesgo:ev.riesgo||null, severidad:ev.severidad||'Alta', descripcion:det2||null };
+    if(f.persistente){
+      const mostrar = (f.key==='presenta_alarma' && det) ? String(det) : String(v);
+      pe[f.key] = { alerta, ident: f.key==='presenta_alarma' ? mostrar.trim().toLowerCase() : 'x' };
+    } else np.push(alerta);
+  });
+  (cfg.reglas||[]).forEach(rg=>{
+    const r = rg.eval(d);
+    if(r && r.fuera) np.push({ key:rg.key, label:rg.label, valor:r.valor, riesgo:rg.riesgo||null, severidad:rg.severidad||'Alta', descripcion:null });
+  });
+  return { np, pe };
+}
+function nuevaAlertaDe(i, e){
+  return { inspeccion_id:i.id, tag:i.tag, parametro_key:e.key, parametro_label:e.label, valor:e.valor, riesgo:e.riesgo||null, severidad:e.severidad, descripcion:e.descripcion||null, fecha_deteccion:i.created_at||null };
+}
+function calcularPlanHistorial(){
+  const creates = [], deletes = [], updates = [], resultados = [];
+  const resumen = {};
+  const porRonda = new Map(), porTagKey = new Map();
+  ST.alertas.forEach(a=>{
+    const k1 = a.inspeccion_id+'|'+a.parametro_key, k2 = a.tag+'|'+a.parametro_key;
+    if(!porRonda.has(k1)) porRonda.set(k1, []);
+    porRonda.get(k1).push(a);
+    if(!porTagKey.has(k2)) porTagKey.set(k2, []);
+    porTagKey.get(k2).push(a);
+  });
+  FAMILIAS_VISIBLES.forEach(fam=>{
+    if(!FAMILY_FIELDS[fam]) return;
+    const cfg = familyFieldConfig(fam);
+    const r = resumen[fam] = { creadas:0, eliminadas:0, actualizadas:0, aAlarma:0, aOk:0 };
+    const tags = new Set(equiposCriticos().filter(a=>a.familia===fam).map(a=>a.tag));
+    const npKeys = new Set((cfg.fields||[]).filter(f=>!f.persistente).map(f=>f.key).concat((cfg.reglas||[]).map(x=>x.key)));
+    const peKeys = (cfg.fields||[]).filter(f=>f.persistente).map(f=>f.key);
+    const manejadas = new Set();
+    const borrar = a=>{ if(manejadas.has(a.id)) return; manejadas.add(a.id); deletes.push(a.id); r.eliminadas++; };
+    const actualizar = (a, e)=>{
+      manejadas.add(a.id);
+      if(a.estado==='Cerrada') return;
+      if(a.parametro_label!==e.label || (a.riesgo||null)!==(e.riesgo||null) || a.severidad!==e.severidad){
+        updates.push({ id:a.id, parametro_label:e.label, riesgo:e.riesgo||null, severidad:e.severidad }); r.actualizadas++;
+      }
+    };
+    const porTag = {};
+    ST.inspecciones.forEach(i=>{ if(tags.has(i.tag) && i.fecha_inspeccion_d) (porTag[i.tag] = porTag[i.tag] || []).push(i); });
+    Object.keys(porTag).forEach(tag=>{
+      const evals = porTag[tag].slice().sort((a,b)=>a.fecha_inspeccion_d-b.fecha_inspeccion_d || String(a.created_at||'').localeCompare(String(b.created_at||'')))
+        .map(i=>({ i, d:i.datos_adicionales||{}, ev:evaluarRonda(cfg, i.datos_adicionales||{}) }));
+      // resultado OK o ALARMA de cada ronda
+      evals.forEach(x=>{
+        const hay = x.ev.np.length>0 || Object.keys(x.ev.pe).length>0;
+        const act = esResultadoOk(x.i.resultado_check);
+        if(act===null) return;
+        if(act===true && hay){ resultados.push({ id:x.i.id, resultado:'ALARMA' }); r.aAlarma++; }
+        else if(act===false && !hay){ resultados.push({ id:x.i.id, resultado:'OK' }); r.aOk++; }
+      });
+      // parámetros que se miden en cada ronda: una alerta por ronda
+      evals.forEach(x=>{
+        const esperadas = {};
+        x.ev.np.forEach(e=>{ esperadas[e.key] = e; });
+        npKeys.forEach(key=>{
+          const ex = porRonda.get(x.i.id+'|'+key) || [];
+          const abiertas = ex.filter(a=>a.estado!=='Cerrada');
+          const e = esperadas[key];
+          ex.filter(a=>a.estado==='Cerrada').forEach(a=>manejadas.add(a.id));
+          if(e){
+            if(!ex.length){ creates.push(nuevaAlertaDe(x.i, e)); r.creadas++; }
+            else if(abiertas.length){ actualizar(abiertas[0], e); abiertas.slice(1).forEach(borrar); }
+          } else abiertas.forEach(borrar);
+        });
+      });
+      // estados que persisten: el mismo problema sin corregir es una sola alerta
+      peKeys.forEach(key=>{
+        let ep = null;
+        const episodios = [];
+        evals.forEach(x=>{
+          const v = x.d[key];
+          if(v==null || v==='') return;
+          const p = x.ev.pe[key];
+          if(!p){ ep = null; return; }
+          if(!ep || ep.ident!==p.ident){ ep = { ident:p.ident, rondas:[x], primera:p.alerta, actual:p.alerta }; episodios.push(ep); }
+          else { ep.rondas.push(x); ep.actual = p.alerta; }
+        });
+        const todas = porTagKey.get(tag+'|'+key) || [];
+        episodios.forEach(e=>{
+          const ids = new Set(e.rondas.map(x=>x.i.id));
+          const ex = todas.filter(a=>ids.has(a.inspeccion_id));
+          ex.filter(a=>a.estado==='Cerrada').forEach(a=>manejadas.add(a.id));
+          const abiertas = ex.filter(a=>a.estado!=='Cerrada').sort((a,b)=>String(b.created_at||b.fecha_deteccion||'').localeCompare(String(a.created_at||a.fecha_deteccion||'')) || (b.id>a.id?1:-1));
+          if(!ex.length){ creates.push(nuevaAlertaDe(e.rondas[0].i, e.primera)); r.creadas++; }
+          else if(abiertas.length){ actualizar(abiertas[0], e.actual); abiertas.slice(1).forEach(borrar); }
+        });
+      });
+    });
+    // alertas abiertas de esta familia que ya no corresponden a nada
+    ST.alertas.forEach(a=>{
+      if(!tags.has(a.tag) || manejadas.has(a.id) || a.estado==='Cerrada') return;
+      if(npKeys.has(a.parametro_key) || peKeys.indexOf(a.parametro_key)!==-1) borrar(a);
+    });
+  });
+  const tot = { creadas:creates.length, eliminadas:deletes.length, actualizadas:updates.length, rondas:resultados.length };
+  return { creates, deletes, updates, resultados, resumen, expected:tot };
+}
+async function prepararPlanHistorial(){
+  await cargarTodo();
+  await cargarParametros();
+  if(ST.nAlertasTotal>=1000 || ST.nRondasTotal>=1000) return { error:'Hay demasiados registros para calcular el plan desde la app (1000 o más). Hay que paginar la lectura antes de usar esta función.' };
+  const rc = await sb.from('parametros_cambios').select('id');
+  if(rc.error) return { error:'No se pudo leer el registro de cambios: '+rc.error.message };
+  const plan = calcularPlanHistorial();
+  plan.base = { n_alertas:ST.nAlertasTotal, n_rondas:ST.nRondasTotal, n_cambios:(rc.data||[]).length };
+  return { plan };
+}
+async function abrirActualizarHistorial(){
+  const r = await prepararPlanHistorial();
+  if(r.error){ ST.paramMsg = r.error; pintarParametros(); return; }
+  const plan = r.plan, e = plan.expected;
+  const hay = e.creadas+e.eliminadas+e.actualizadas+e.rondas>0;
+  const filas = Object.keys(plan.resumen).map(f=>{
+    const x = plan.resumen[f];
+    return '<tr><td>'+escHtml(f)+'</td><td>'+x.creadas+'</td><td>'+x.eliminadas+'</td><td>'+x.actualizadas+'</td><td>'+x.aAlarma+'</td><td>'+x.aOk+'</td></tr>';
+  }).join('');
+  openModal(`
+    <div class="modal-head"><h3>Actualizar historial</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
+    <div style="font-size:14px">
+      ${nCambiosBorrador()>0 ? '<div class="form-msg err">Hay '+nCambiosBorrador()+' cambios sin aplicar. Esta actualización usa solo lo que rige hoy; aplica primero tus cambios si quieres incluirlos.</div>' : ''}
+      <p style="margin:0 0 8px">Se compara cada ronda registrada con las reglas que rigen hoy. <b>Todavía no se ha modificado nada.</b></p>
+      <table class="obs-table"><thead><tr><th>Familia</th><th>Alertas que se crean</th><th>Alertas que se eliminan</th><th>Alertas que cambian</th><th>Rondas a ALARMA</th><th>Rondas a OK</th></tr></thead><tbody>${filas}</tbody></table>
+      ${hay ? `<p class="phint" style="margin-top:10px"><b>Total:</b> ${e.creadas} creadas, ${e.eliminadas} eliminadas, ${e.actualizadas} actualizadas y ${e.rondas} rondas con resultado nuevo.</p>
+      <ul class="plista" style="margin-top:8px">
+        <li>Las alertas <b>cerradas</b> nunca se tocan, con su medida correctiva.</li>
+        <li>Las alertas <b>abiertas</b> que dejan de aplicar se eliminan, con respaldo.</li>
+        <li>Las rondas que pasan a incumplir reciben la alerta nueva, abierta y con su fecha original.</li>
+        <li>El mismo problema de filtro, alarma o estructura sin corregir cuenta una sola vez.</li>
+        <li>Todo se hace junto: si algo no coincide con esta vista previa, se revierte completo.</li>
+      </ul>
+      <label style="display:block;margin-top:10px;font-size:13px;color:var(--text-mid)">Motivo (opcional)<input type="text" id="pMotivoH" maxlength="120" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--line);margin-top:4px"></label>`
+      : '<p class="phint" style="margin-top:10px"><b>El historial ya coincide con las reglas vigentes.</b> No hay nada que actualizar.</p>'}
+      <div class="form-msg hidden" id="pHistMsg"></div>
+      <div class="form-actions"><button type="button" class="btn" onclick="window.__closeModal()">${hay?'Cancelar':'Cerrar'}</button>${hay?'<button type="button" class="btn primary" id="pHistOk">Actualizar historial</button>':''}</div>
+    </div>`);
+  const ok = $('#pHistOk');
+  if(!ok) return;
+  ok.onclick = async ()=>{
+    ok.disabled = true;
+    const res = await sb.rpc('aplicar_plan_historial', { p_plan: plan, p_motivo: ($('#pMotivoH').value||'').trim() || null });
+    if(res.error){ formError('pHistMsg', res.error.message); ok.disabled = false; return; }
+    const d = res.data || {};
+    await cargarTodo(); await cargarParametros(); await cargarBorrador();
+    ST.paramMsg = 'Historial actualizado: '+(d.creadas||0)+' alertas creadas, '+(d.eliminadas||0)+' eliminadas, '+(d.actualizadas||0)+' actualizadas y '+(d.rondas||0)+' rondas con resultado nuevo. Respaldo guardado (lote '+(d.lote||'—')+').';
+    closeModal(); pintarParametros();
+  };
 }
 
 /* ---- construcción de la pantalla ---- */
@@ -1099,6 +1267,11 @@ function pintarParametros(){
     b.querySelector('#pbVer').onclick = abrirImpacto;
     b.querySelector('#pbDesc').onclick = async ()=>{ const e = await descartarBorrador(); if(e) ST.paramMsg = e; ST.paramErr = null; pintarParametros(); };
   }
+  const hist = el('div','pbanner');
+  hist.style.cssText = 'background:#F7F3FD;border-color:#CDBDEB';
+  hist.innerHTML = '<span><b>Historial.</b> Compara las rondas ya registradas con las reglas que rigen hoy, y corrige sus alertas. Primero ves una vista previa y no se modifica nada hasta que confirmes.</span><span><button type="button" class="btn" id="pbHist">Revisar y actualizar historial</button></span>';
+  raiz.appendChild(hist);
+  hist.querySelector('#pbHist').onclick = abrirActualizarHistorial;
   const barra = el('div','tabs-fam no-print');
   const todas = fams.map(f=>({id:f,label:f})).concat([{id:'__registro',label:'Registro de cambios'}]);
   todas.forEach(t=>{
