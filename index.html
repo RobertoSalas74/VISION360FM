@@ -44,6 +44,28 @@
   .tab-fam{background:none;border:none;padding:10px 20px;font-size:15px;font-weight:600;color:var(--text-mid);border-bottom:3px solid transparent;margin-bottom:-1px;cursor:pointer;}
   .tab-fam:hover{color:var(--text-hi);}
   .tab-fam.on{color:var(--text-hi);border-bottom-color:var(--sodexo-blue);}
+  :root{--marca-morado:#2B0A55;}
+  .tab-fam.on{color:var(--marca-morado);border-bottom-color:var(--sodexo-red);}
+  .tend-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px;}
+  .tend-card{background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 2px 8px rgba(43,10,85,.08);border-top:4px solid #3B0A6B;}
+  .tend-card .k{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-mid);font-weight:700;}
+  .tend-card .v{font-family:var(--font-display);font-size:38px;font-weight:700;line-height:1.1;color:var(--marca-morado);margin:4px 0 2px;}
+  .tend-card .v small{font-size:20px;font-weight:600;color:var(--text-mid);}
+  .tend-card .d{font-size:13px;color:var(--text-mid);}
+  .tend-card .pd{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px;background:#ECEEF5;color:#5B6072;margin-top:6px;}
+  .tend .panel{border:none;border-radius:14px;box-shadow:0 2px 8px rgba(43,10,85,.08);}
+  .tend .panel h3{color:var(--marca-morado);}
+  .gfRow{display:grid;grid-template-columns:minmax(110px,170px) minmax(0,1fr) 84px;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;margin-bottom:2px;cursor:pointer;}
+  .gfRow:hover{background:#F7F3FD;}
+  .gfRow.sel{background:#F1EBFB;}
+  .gfRow .n{font-size:14px;font-weight:600;color:var(--text-hi);}
+  .gfRow .tr{height:16px;background:#ECECF4;border-radius:8px;overflow:hidden;}
+  .gfRow .tr i{display:block;height:100%;border-radius:8px;}
+  .gfRow .c{font-size:14px;text-align:right;}
+  .gfRow .c b{font-size:16px;}
+  .gfRow .c span{color:var(--text-mid);font-size:12px;}
+  .gf2-scroll{max-height:520px;overflow-y:auto;padding-right:4px;}
+  @media (max-width:700px){ .tend-stats{grid-template-columns:1fr;} }
   .gf2{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;}
   .gf2-det{border-top:1px solid var(--line);margin-top:12px;padding-top:12px;}
   @media (min-width:900px){
@@ -1490,11 +1512,12 @@ const FAMILIAS_POR_AREA = ["Compactos", "UMA's"];
 const ORDEN_AREAS_COMPACTOS = ["PA-1","PF-3","PF-4","PF-5","PI-7","PI-8","PI-9","PI-11","RECUPERADOR","SALA CHILLER","SALA RACF"];
 
 const OCULTAR_ESTADO_ALERTAS = true;
+const MIN_EQUIPOS_SEMANA = 10;
 const MOSTRAR_INDICADORES_AREA = false;
 const FAMILIAS_VISIBLES = ["Chiller","Compactos","UMA's","Torres de Enfriamiento"];
 const GRAFICOS_FALLAS_FAMILIAS = ["UMA's","Compactos"];
-const COLORES_FALLA = { temp_agua_salida:'#eb6834', descarga_aire:'#2a78d6', estado_filtro:'#1baf7a', presion_salida:'#eda100', presion_ingreso:'#e87ba4', temp_agua_entrada:'#6250d6', temp_seteada:'#eb6834', temp_interior:'#2a78d6', ciclo_enfriamiento:'#6250d6', presenta_alarma:'#e87ba4', estado_estructura:'#eda100' };
-const COLORES_FALLA_RESERVA = ['#0f6e56','#993556','#534ab7','#888780','#185fa5','#854f0b'];
+const COLORES_FALLA = { estado_filtro:'#6D3FC0', temp_interior:'#2F9EE0', temp_seteada:'#F08A3C', presenta_alarma:'#E0457B', ciclo_enfriamiento:'#1FA39A', estado_estructura:'#D9A21B', temp_agua_salida:'#F08A3C', descarga_aire:'#2F9EE0', presion_salida:'#D9A21B', presion_ingreso:'#E0457B', temp_agua_entrada:'#1FA39A' };
+const COLORES_FALLA_RESERVA = ['#6D3FC0','#2F9EE0','#F08A3C','#E0457B','#1FA39A','#D9A21B'];
 
 function ddmm(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
 
@@ -1539,7 +1562,14 @@ function calcularFallasSemanas(fam, lunes0, nSem){
   const semDe = d => Math.floor(daysBetween(lunes0, d)/7);
   const rondasPorTag = {};
   const rondasSem = new Array(nSem).fill(0);
-  rondas.forEach(i=>{ rondasPorTag[i.tag] = (rondasPorTag[i.tag]||0)+1; rondasSem[semDe(i.fecha_inspeccion_d)]++; });
+  const equiposSem = Array.from({length:nSem}, ()=>new Set());
+  const alertaSem = Array.from({length:nSem}, ()=>new Set());
+  rondas.forEach(i=>{
+    const w = semDe(i.fecha_inspeccion_d);
+    rondasPorTag[i.tag] = (rondasPorTag[i.tag]||0)+1; rondasSem[w]++;
+    equiposSem[w].add(i.tag);
+    if(esResultadoOk(i.resultado_check)===false) alertaSem[w].add(i.tag);
+  });
   const nombreEq = tag => { const a = ST.activosByTag.get(tag); return a ? displayName(a) : tag; };
   const fallas = [];
   const nueva = (key,label,i,valor,extra) => Object.assign({ key, label, tag:i.tag, uma:nombreEq(i.tag), fecha:i.fecha_inspeccion_d, creado:i.created_at||'', valor, sem:semDe(i.fecha_inspeccion_d) }, extra||{});
@@ -1618,37 +1648,70 @@ function calcularFallasSemanas(fam, lunes0, nSem){
       porParam[p.key] = items;
       total += items.length;
     });
-    semanas.push({ label: ddmm(ini), rondas: rondasSem[w], porParam, total });
+    semanas.push({ label: ddmm(ini), rondas: rondasSem[w], equipos: equiposSem[w].size, conAlerta: alertaSem[w].size, porParam, total });
   }
-  return { params, semanas, rondasPorTag, fin };
+  // equipos cuyo último registro todavía muestra un estado que persiste en mal estado
+  let sinCorregir = 0;
+  const ultimas = {};
+  todas.forEach(i=>{
+    const u = ultimas[i.tag];
+    if(!u || i.fecha_inspeccion_d>u.fecha_inspeccion_d || (i.fecha_inspeccion_d.getTime()===u.fecha_inspeccion_d.getTime() && String(i.created_at||'')>String(u.created_at||''))) ultimas[i.tag] = i;
+  });
+  Object.values(ultimas).forEach(i=>{
+    const d = i.datos_adicionales || {};
+    const mal = (cfg.fields||[]).some(f=>{
+      if(!f.persistente) return false;
+      const v = d[f.key];
+      if(v==null || v==='') return false;
+      const ev = evaluarCampo(f, v);
+      return !!(ev && ev.fuera);
+    });
+    if(mal) sinCorregir++;
+  });
+  return { params, semanas, rondasPorTag, fin, sinCorregir, totalEquipos: eq.length };
 }
 
 function svgAlertasSemana(D){
-  const W=760, H=300, ml=40, mr=10, mt=30, mb=52;
-  const pw=W-ml-mr, ph=H-mt-mb, n=D.semanas.length, step=pw/n, bw=Math.min(n<=4?78:54, step*0.62);
+  const W=760, H=320, ml=40, mr=10, mt=34, mb=82;
+  const pw=W-ml-mr, ph=H-mt-mb, n=D.semanas.length, step=pw/n, bw=Math.min(n<=4?86:54, step*0.62);
   const maxT = Math.max.apply(null, D.semanas.map(s=>s.total).concat([1]));
-  const paso = Math.max(1, Math.ceil(Math.max(4,maxT)/4));
+  const paso = Math.max(1, Math.ceil(Math.max(4,maxT)/3));
   const ymax = paso*Math.ceil(Math.max(4,maxT)/paso);
   const Y = v => mt + ph - (v/ymax)*ph;
-  let s = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Alertas por semana según qué falló. '+D.semanas.map(x=>x.label+': '+(x.rondas===0?'sin rondas':x.total+' alertas en '+x.rondas+(x.rondas===1?' ronda':' rondas'))).join('; ')+'" style="display:block">';
+  let s = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Alertas por semana según qué falló. '+D.semanas.map(x=>x.label+': '+(x.equipos===0?'sin inspecciones':x.total+' alertas, '+x.conAlerta+' de '+x.equipos+' equipos con alerta'+(x.equipos<MIN_EQUIPOS_SEMANA?', pocos datos':''))).join('; ')+'" style="display:block"><defs>';
+  D.semanas.forEach((sem,w)=>{
+    const cx = ml + step*w + step/2;
+    if(sem.total>0) s += '<clipPath id="cq'+w+'"><rect x="'+(cx-bw/2)+'" y="'+Y(sem.total)+'" width="'+bw+'" height="'+(Y(0)-Y(sem.total))+'" rx="10"/></clipPath>';
+  });
+  s += '</defs>';
   for(let v=0; v<=ymax; v+=paso){
-    s += '<line x1="'+ml+'" x2="'+(W-mr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="#E1E4EC" stroke-width="1"/>';
-    s += '<text x="'+(ml-8)+'" y="'+(Y(v)+4)+'" text-anchor="end" font-size="13" fill="#5B6072">'+v+'</text>';
+    s += '<line x1="'+ml+'" x2="'+(W-mr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="#ECECF4" stroke-width="1"'+(v?' stroke-dasharray="4 5"':'')+'/>';
+    s += '<text x="'+(ml-8)+'" y="'+(Y(v)+4)+'" text-anchor="end" font-size="12" fill="#8A8FA3">'+v+'</text>';
   }
   D.semanas.forEach((sem,w)=>{
     const cx = ml + step*w + step/2;
-    let acum = 0;
-    D.params.forEach((p,pi)=>{
-      const c = sem.porParam[p.key].length;
-      if(!c) return;
-      const y0 = Y(acum), y1 = Y(acum+c);
-      s += '<rect data-w="'+w+'" data-p="'+pi+'" x="'+(cx-bw/2)+'" y="'+y1+'" width="'+bw+'" height="'+(y0-y1)+'" fill="'+p.color+'" stroke="#fff" stroke-width="2" style="cursor:default"/>';
-      acum += c;
-    });
-    if(sem.rondas===0) s += '<text x="'+cx+'" y="'+(Y(0)-10)+'" text-anchor="middle" font-size="14" fill="#5B6072">sin rondas</text>';
-    else s += '<text x="'+cx+'" y="'+(Y(sem.total)-8)+'" text-anchor="middle" font-size="16" font-weight="700" fill="#1A1D2B">'+sem.total+'</text>';
-    s += '<text x="'+cx+'" y="'+(H-28)+'" text-anchor="middle" font-size="13" fill="#1A1D2B">'+sem.label+'</text>';
-    if(sem.rondas>0) s += '<text x="'+cx+'" y="'+(H-10)+'" text-anchor="middle" font-size="12" fill="#5B6072">'+sem.rondas+(sem.rondas===1?' ronda':' rondas')+'</text>';
+    const poco = sem.equipos>0 && sem.equipos<MIN_EQUIPOS_SEMANA;
+    if(sem.total>0){
+      let acum = 0;
+      s += '<g clip-path="url(#cq'+w+')" opacity="'+(poco?0.55:1)+'">';
+      D.params.forEach((p,pi)=>{
+        const c = sem.porParam[p.key].length;
+        if(!c) return;
+        const y0 = Y(acum), y1 = Y(acum+c);
+        s += '<rect data-w="'+w+'" data-p="'+pi+'" x="'+(cx-bw/2)+'" y="'+y1+'" width="'+bw+'" height="'+(y0-y1)+'" fill="'+p.color+'" stroke="#fff" stroke-width="2" style="cursor:default"/>';
+        acum += c;
+      });
+      s += '</g>';
+    }
+    if(sem.equipos===0){
+      s += '<text x="'+cx+'" y="'+(Y(0)-10)+'" text-anchor="middle" font-size="14" fill="#6B6F85">sin inspecciones</text>';
+      s += '<text x="'+cx+'" y="'+(H-40)+'" text-anchor="middle" font-size="14" font-weight="600" fill="#1A1D2B">'+sem.label+'</text>';
+    } else {
+      s += '<text x="'+cx+'" y="'+(Y(sem.total)-10)+'" text-anchor="middle" font-size="22" font-weight="700" fill="#2B0A55">'+sem.total+'</text>';
+      s += '<text x="'+cx+'" y="'+(H-52)+'" text-anchor="middle" font-size="14" font-weight="600" fill="#1A1D2B">'+sem.label+'</text>';
+      s += '<text x="'+cx+'" y="'+(H-32)+'" text-anchor="middle" font-size="13" fill="#1A1D2B"><tspan font-weight="700">'+sem.conAlerta+' de '+sem.equipos+'</tspan> equipos con alerta</text>';
+      s += '<text x="'+cx+'" y="'+(H-14)+'" text-anchor="middle" font-size="12.5" fill="#6B6F85">'+Math.round(sem.conAlerta/sem.equipos*100)+'%'+(poco?' · pocos datos':'')+'</text>';
+    }
   });
   return s + '</svg>';
 }
@@ -1658,13 +1721,18 @@ function renderGraficosFallas(app, fam){
   if(!eq.length) return;
   const tags = new Set(eq.map(a=>a.tag));
   const conRonda = ST.inspecciones.filter(i=>tags.has(i.tag) && i.fecha_inspeccion_d);
-  const NSEM = 8, MAXEQ = 10;
+  const NSEM = 8;
   let pagina = 0, sel = null;
+  const wrapT = el('div','tend');
+  const stats = el('div','tend-stats');
   const panelA = el('div','panel');
   const panelB = el('div','panel');
-  app.appendChild(panelA);
-  app.appendChild(panelB);
+  wrapT.appendChild(stats);
+  wrapT.appendChild(panelA);
+  wrapT.appendChild(panelB);
+  app.appendChild(wrapT);
   if(!conRonda.length){
+    stats.style.display = 'none';
     panelA.innerHTML = '<h3 style="margin:0 0 6px">Alertas por semana, según qué falló</h3>';
     panelA.appendChild(el('div','empty-msg','Todavía no hay rondas registradas.'));
     panelB.style.display = 'none';
@@ -1685,6 +1753,16 @@ function renderGraficosFallas(app, fam){
     const rango = ddmm(ini)+' – '+ddmm(D.fin);
     const periodo = esPrimera ? 'desde '+ddmm(ini) : rango;
     if(!D.params.some(p=>p.key===sel)) sel = null;
+
+    /* ---------- Cifras de la semana ---------- */
+    const ult = D.semanas[D.semanas.length-1];
+    const poco = ult.equipos>0 && ult.equipos<MIN_EQUIPOS_SEMANA;
+    const c1 = ult.equipos===0
+      ? '<div class="k">Equipos con alerta</div><div class="v">—</div><div class="d">sin inspecciones la semana del '+ult.label+'</div>'
+      : '<div class="k">Equipos con alerta</div><div class="v">'+ult.conAlerta+' <small>de '+ult.equipos+'</small></div><div class="d">'+Math.round(ult.conAlerta/ult.equipos*100)+'% de los inspeccionados</div>'+(poco?'<span class="pd">pocos datos</span>':'');
+    const c2 = '<div class="k">Sin corregir</div><div class="v">'+D.sinCorregir+'</div><div class="d">'+(D.sinCorregir===0?'ningún equipo con un problema sin corregir':(D.sinCorregir===1?'equipo con un problema sin corregir':'equipos con un problema sin corregir'))+'</div>';
+    const c3 = '<div class="k">Inspeccionados</div><div class="v">'+ult.equipos+'</div><div class="d">de '+D.totalEquipos+' equipos · semana del '+ult.label+'</div>';
+    stats.innerHTML = '<div class="tend-card">'+c1+'</div><div class="tend-card">'+c2+'</div><div class="tend-card">'+c3+'</div>';
 
     /* ---------- Gráfico 1 ---------- */
     panelA.innerHTML = '';
@@ -1707,12 +1785,12 @@ function renderGraficosFallas(app, fam){
     panelA.appendChild(head);
     const sub = el('p');
     sub.style.cssText = 'font-size:12px;color:var(--text-low);margin:0 0 12px';
-    sub.textContent = (esPrimera ? 'Desde el '+ddmm(ini)+', la primera semana con datos. ' : 'Semanas que inician el lunes. ')+'Pasa el cursor sobre un color para ver el detalle.';
+    sub.textContent = (esPrimera ? 'Desde el '+ddmm(ini)+', la primera semana con datos. ' : 'Semanas que inician el lunes. ')+'Debajo de cada semana: equipos con alerta sobre equipos inspeccionados. Pasa el cursor sobre un color para ver el detalle.';
     panelA.appendChild(sub);
     if(D.params.length){
       const leg = el('div');
-      leg.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px 22px;margin-bottom:12px;font-size:14px;color:var(--text-mid)';
-      leg.innerHTML = D.params.map(p=>'<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:2px;background:'+p.color+'"></span>'+escHtml(p.label)+(p.ley.corta?' · '+escHtml(p.ley.corta):'')+'</span>').join('');
+      leg.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 20px;margin-bottom:8px;font-size:13px;color:var(--text-mid)';
+      leg.innerHTML = D.params.map(p=>'<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:4px;background:'+p.color+'"></span>'+escHtml(p.label)+(p.ley.corta?' · '+escHtml(p.ley.corta):'')+'</span>').join('');
       panelA.appendChild(leg);
     }
     const wrap = el('div');
@@ -1750,14 +1828,14 @@ function renderGraficosFallas(app, fam){
       return;
     }
     const maxP = D.params[0].total;
+    const sumaT = D.params.reduce((a,p)=>a+p.total,0);
     const lista = el('div');
     lista.innerHTML = D.params.map(p=>{
       const pct = Math.round(p.total/maxP*100);
-      const activo = p.key===sel;
-      return '<div class="gfRow" data-k="'+p.key+'" style="display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr) 40px;align-items:center;gap:14px;padding:6px 4px;cursor:pointer;opacity:'+((sel===null||activo)?1:0.4)+'">'+
-        '<div style="font-size:15px;font-weight:600;color:var(--text-hi)">'+escHtml(p.label)+'</div>'+
-        '<div style="height:22px;background:var(--bg-page);border-radius:4px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+p.color+';border-radius:4px"></div></div>'+
-        '<div style="font-size:16px;font-weight:700;color:var(--text-hi)">'+p.total+'</div></div>';
+      return '<div class="gfRow'+(p.key===sel?' sel':'')+'" data-k="'+p.key+'">'+
+        '<div class="n">'+escHtml(p.label)+'</div>'+
+        '<div class="tr"><i style="width:'+pct+'%;background:'+p.color+'"></i></div>'+
+        '<div class="c"><b>'+p.total+'</b> <span>'+Math.round(p.total/sumaT*100)+'%</span></div></div>';
     }).join('');
     lista.querySelectorAll('.gfRow').forEach(r=>{ r.onclick = ()=>{ sel = (sel===r.dataset.k) ? null : r.dataset.k; pintar(); }; });
     const p = D.params.find(x=>x.key===sel);
@@ -1766,32 +1844,40 @@ function renderGraficosFallas(app, fam){
     panelB.appendChild(cont2);
     if(!p) return;
     const det = el('div','gf2-det');
-    const chipS = 'font-size:14px;padding:3px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg-page);color:var(--text-hi)';
-    const vistos = p.umas.slice(0,MAXEQ);
-    const filas = vistos.map(u=>{
-      let cab, chips;
-      if(p.unaVez){
-        const ult = u.items[u.items.length-1];
-        cab = u.items.length>1 ? u.items.length+' veces · la última desde '+ddmm(ult.fecha) : 'desde '+ddmm(ult.fecha);
-        chips = '<span style="'+chipS+'">'+escHtml(ult.ep ? ult.ep.ultimoValor : ult.valor)+'</span>';
-      } else {
+    const pill = 'font-size:12.5px;font-weight:700;color:var(--sodexo-blue);text-decoration:underline;cursor:pointer;border:1px solid var(--line);background:var(--bg-page);border-radius:8px;padding:3px 9px';
+    let cuerpo = '';
+    if(p.unaVez){
+      const grupos = {};
+      p.umas.forEach(u=>u.items.forEach(x=>{
+        const val = x.ep ? x.ep.ultimoValor : x.valor;
+        const k = val+'|'+x.fecha.getTime();
+        (grupos[k] = grupos[k] || { val, fecha:x.fecha, equipos:[] }).equipos.push(u);
+      }));
+      cuerpo = Object.values(grupos).sort((a,b)=>a.fecha-b.fecha || a.val.localeCompare(b.val,'es')).map(g=>{
+        g.equipos.sort((a,b)=>a.uma.localeCompare(b.uma,'es',{numeric:true}));
+        return '<div style="padding:10px 0;border-top:1px solid var(--line)">'+
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px"><b style="font-size:14px">'+escHtml(g.val)+' · desde '+ddmm(g.fecha)+'</b>'+
+          '<span style="font-size:13px;color:var(--text-mid)">'+g.equipos.length+(g.equipos.length===1?' equipo':' equipos')+'</span></div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:6px">'+g.equipos.map(u=>'<a href="javascript:void(0)" class="gfEq" data-tag="'+escHtml(u.tag)+'" style="'+pill+'">'+escHtml(u.uma)+'</a>').join('')+'</div></div>';
+      }).join('');
+    } else {
+      const chipS = 'font-size:13px;padding:3px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg-page);color:var(--text-hi)';
+      cuerpo = p.umas.map(u=>{
         const nr = D.rondasPorTag[u.tag]||u.items.length;
-        cab = u.items.length+' de '+nr+(nr===1?' ronda':' rondas');
-        chips = u.items.slice(0,4).map(x=>'<span style="'+chipS+'">'+ddmm(x.fecha)+' · '+escHtml(x.valor)+'</span>').join('')+
-          (u.items.length>4?'<span style="font-size:14px;color:var(--text-mid);align-self:center">+'+(u.items.length-4)+' más</span>':'');
-      }
-      return '<div style="padding:8px 0;border-top:1px solid var(--line)">'+
-        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><a href="javascript:void(0)" class="gfEq" data-tag="'+escHtml(u.tag)+'" style="font-size:15px;font-weight:700;color:var(--sodexo-blue);text-decoration:underline;cursor:pointer">'+escHtml(u.uma)+'</a>'+
-        '<span style="font-size:14px;color:var(--text-mid)">'+cab+'</span></div>'+
-        '<div style="display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div></div>';
-    }).join('');
-    const resto = p.umas.length - vistos.length;
+        const chips = u.items.slice(0,4).map(x=>'<span style="'+chipS+'">'+ddmm(x.fecha)+' · '+escHtml(x.valor)+'</span>').join('')+
+          (u.items.length>4?'<span style="font-size:13px;color:var(--text-mid);align-self:center">+'+(u.items.length-4)+' más</span>':'');
+        return '<div style="padding:8px 0;border-top:1px solid var(--line)">'+
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><a href="javascript:void(0)" class="gfEq" data-tag="'+escHtml(u.tag)+'" style="font-size:15px;font-weight:700;color:var(--sodexo-blue);text-decoration:underline;cursor:pointer">'+escHtml(u.uma)+'</a>'+
+          '<span style="font-size:13px;color:var(--text-mid)">'+u.items.length+' de '+nr+(nr===1?' ronda':' rondas')+'</span></div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div></div>';
+      }).join('');
+    }
     det.innerHTML =
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:12px;height:12px;border-radius:2px;background:'+p.color+'"></span>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="width:12px;height:12px;border-radius:4px;background:'+p.color+'"></span>'+
       '<span style="font-size:16px;font-weight:700">'+escHtml(p.label)+'</span>'+
       '<span style="font-size:14px;color:var(--text-mid)">· '+p.total+(p.total===1?' alerta':' alertas')+' en '+p.umas.length+(p.umas.length===1?' equipo':' equipos')+'</span></div>'+
-      (p.ley.rl ? '<div style="font-size:14px;color:var(--text-mid);margin:0 0 8px 20px">'+p.ley.rl+': <span style="font-weight:700;color:var(--text-hi)">'+escHtml(p.ley.rv)+'</span>'+(p.unaVez?' · se cuenta una vez, cuando aparece':'')+'</div>' : '')+filas+
-      (resto>0 ? '<div style="padding:8px 0;border-top:1px solid var(--line);font-size:14px;color:var(--text-mid)">+'+resto+' equipos más</div>' : '');
+      (p.ley.rl ? '<div style="font-size:14px;color:var(--text-mid);margin:0 0 6px 20px">'+p.ley.rl+': <span style="font-weight:700;color:var(--text-hi)">'+escHtml(p.ley.rv)+'</span>'+(p.unaVez?' · se cuenta una vez, cuando aparece':'')+'</div>' : '')+
+      '<div class="gf2-scroll">'+cuerpo+'</div>';
     det.querySelectorAll('.gfEq').forEach(a=>{ a.onclick = ()=>irAEquipo(a.dataset.tag); });
     cont2.appendChild(det);
   }
