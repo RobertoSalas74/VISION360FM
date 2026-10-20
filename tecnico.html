@@ -43,6 +43,58 @@
   .brand .site small{display:block;font-family:var(--font-body);font-weight:400;font-size:11px;color:#C7CCEA;}
   header#topbar .spacer{flex:1;}
   .top-ctrl{display:flex;align-items:center;gap:6px;font-size:12px;color:#DEE1F2;}
+  .prog-panel{background:#fff;border:1px solid #E1E4EC;border-radius:14px;padding:20px 22px 18px;box-shadow:0 2px 8px rgba(43,10,85,.07);margin-top:16px;}
+  .prog-hd{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #E6E8F0;}
+  .prog-hd h3{margin:0;font-size:22px;font-weight:700;color:var(--marca-morado);}
+  .prog-sub{font-size:13.5px;color:var(--text-mid);margin-top:3px;}
+  .prog-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .prog-b{font:inherit;font-size:13.5px;font-weight:600;color:var(--marca-morado);padding:8px 16px;border:1px solid #CDBDEB;border-radius:10px;background:#fff;cursor:pointer;white-space:nowrap;}
+  .prog-b:hover{background:#F7F3FD;} .prog-b:disabled{opacity:.4;cursor:default;}
+  .prog-b.prog-s{background:#3B0A6B;color:#fff;border-color:#3B0A6B;}
+  .prog-aviso{background:#FFF7E6;border:1px solid #F0C36D;border-radius:10px;padding:9px 14px;font-size:13.5px;margin-bottom:12px;color:var(--text-hi);}
+  .prog-hoy{background:linear-gradient(160deg,#2B0A55 0%,#4D1590 100%);border-radius:14px;padding:18px 22px;color:#fff;display:grid;grid-template-columns:230px minmax(0,1fr) 200px;gap:22px;align-items:center;margin-bottom:12px;}
+  .prog-tag{display:inline-block;background:#E60012;color:#fff;font-size:11px;font-weight:700;letter-spacing:.1em;padding:3px 11px;border-radius:20px;}
+  .prog-num{font-size:60px;font-weight:700;line-height:1;margin:8px 0 2px;}
+  .prog-fec{font-size:15px;opacity:.92;}
+  .prog-acts{border-left:1px solid rgba(255,255,255,.22);border-right:1px solid rgba(255,255,255,.22);padding:2px 22px;}
+  .prog-act{font-size:17px;line-height:1.35;font-weight:600;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.14);overflow-wrap:break-word;}
+  .prog-act:last-child{border-bottom:none;}
+  .prog-act.prog-vacio{opacity:.7;font-weight:400;}
+  .prog-rsp{font-size:16px;font-weight:600;overflow-wrap:break-word;}
+  .prog-rl{display:block;font-size:9.5px;letter-spacing:.1em;opacity:.75;font-weight:700;margin-bottom:3px;}
+  .prog-sin{opacity:.7;font-weight:400;}
+  .prog-fila{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;}
+  .prog-d{font:inherit;text-align:left;color:inherit;border:1px solid #E1E4EC;border-radius:10px;padding:9px 7px 8px;background:#fff;display:flex;flex-direction:column;min-width:0;cursor:pointer;}
+  .prog-d:hover{background:#FAF7FF;}
+  .prog-d.cur{border:2px solid #3B0A6B;padding:8px 6px 7px;background:#FAF7FF;}
+  .prog-d.vac{background:#FAFAFC;}
+  .prog-dn{font-size:9px;font-weight:700;color:var(--text-mid);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
+  .prog-d.cur .prog-dn{color:#3B0A6B;}
+  .prog-dd{font-size:19px;font-weight:700;color:var(--marca-morado);line-height:1.15;margin-bottom:5px;}
+  .prog-da{flex:1;}
+  .prog-a{font-size:11px;line-height:1.3;color:var(--text-hi);padding-bottom:5px;margin-bottom:5px;border-bottom:1px solid #EEF0F6;overflow-wrap:break-word;hyphens:auto;}
+  .prog-a:last-child{border-bottom:none;}
+  .prog-v{font-size:11px;color:#AEB2C4;}
+  .prog-r{border-top:1px solid #E6E8F0;padding-top:7px;margin-top:3px;font-size:11.5px;font-weight:600;color:var(--marca-morado);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .prog-r0{color:#AEB2C4;font-weight:400;}
+  .prog-notas{font-size:13px;color:var(--text-mid);margin-top:12px;padding-top:10px;border-top:1px solid #EEF0F6;}
+  .modal.prog-modal{max-width:1120px;width:96vw;}
+  .prog-scroll{border:1px solid #E1E4EC;border-radius:12px;overflow:auto;max-height:62vh;}
+  .prog-mt{width:100%;border-collapse:collapse;table-layout:fixed;min-width:760px;}
+  .prog-mt th{background:#2B0A55;color:#fff;font-size:11.5px;letter-spacing:.09em;font-weight:700;padding:10px;text-align:left;position:sticky;top:0;}
+  .prog-mt td{vertical-align:top;padding:8px 10px 10px;border-top:1px solid #E6E8F0;border-right:1px solid #EEF0F6;background:#fff;overflow-wrap:break-word;}
+  .prog-mt td:last-child{border-right:none;}
+  .prog-mt td.g{background:#F7F7FB;} .prog-mt td.g .n{color:#C3C6D4;}
+  .prog-mt td.h{box-shadow:inset 0 3px 0 #E60012;background:#FDFBFF;}
+  .prog-mt .n{font-size:14px;font-weight:700;color:var(--marca-morado);margin-bottom:4px;}
+  .prog-mt .t{font-size:12.5px;line-height:1.35;color:var(--text-hi);margin-bottom:4px;}
+  .prog-mt .p{font-size:11.5px;color:#7B7F95;margin-top:5px;} .prog-mt .p0{color:#AEB2C4;}
+  .prog-av{background:#FFF7E6;border:1px solid #F0C36D;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:6px;}
+  .prog-av.prog-info{background:#F2F2F7;border-color:#DCDCEA;}
+  @media (max-width:760px){
+    .prog-hoy{grid-template-columns:1fr;} .prog-acts{border:none;padding:0;}
+    .prog-fila{grid-template-columns:repeat(7,minmax(104px,1fr));overflow-x:auto;}
+  }
   .pparams{max-width:100%;}
   .pbanner{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--warn-bg);border:1px solid var(--warn);border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:14px;color:var(--text-hi);}
   .ptit{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);font-weight:700;margin:18px 0 8px;}
@@ -547,7 +599,7 @@ const ST = {
   session:null,
   modoTecnico:false,
   familyOrder:[],
-  paramsLive:{}, paramsBorrador:{}, paramsFirma:'',
+  paramsLive:{}, paramsBorrador:{}, paramsFirma:'', programacion:{dias:{},meses:{}}, progPreview:null, progError:null,
 };
 
 /* =========================================================
@@ -1113,6 +1165,267 @@ async function abrirActualizarHistorial(){
   };
 }
 
+/* =========================================================
+   PROGRAMACIÓN DE RUTINAS — lector del Excel mensual
+========================================================= */
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const DIAS_ES = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+function isoDeUTC(d){ return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0'); }
+function limpiarTextoProg(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+function parsearCeldaDia(texto){
+  const lineas = String(texto||'').split(/\r?\n/).map(l=>l.replace(/\u00a0/g,' ')).filter(l=>l.trim()!=='');
+  const acts = [], resto = [];
+  lineas.forEach(l=>{
+    if(/^\s*[-•–—*]\s*/.test(l)){ const t = limpiarTextoProg(l.replace(/^\s*[-•–—*]\s*/,'')); if(t) acts.push(t); }
+    else resto.push(limpiarTextoProg(l));
+  });
+  let responsable = '', sinVinetas = false;
+  if(acts.length){ responsable = resto.length ? resto[resto.length-1] : ''; }
+  else if(resto.length){ resto.forEach(t=>acts.push(t)); sinVinetas = true; }
+  return { actividades:acts, responsable, sinVinetas };
+}
+function parsearHojaProgramacion(ws){
+  if(!ws || !ws['!ref']) return null;
+  const rng = XLSX.utils.decode_range(ws['!ref']);
+  const fechas = [];
+  let notas = null;
+  for(let r=rng.s.r; r<=rng.e.r; r++){
+    for(let c=rng.s.c; c<=rng.e.c; c++){
+      const cell = ws[XLSX.utils.encode_cell({r,c})];
+      if(!cell) continue;
+      if(cell.t==='n' && cell.z && XLSX.SSF.is_date(cell.z) && cell.v>40000 && cell.v<80000){
+        const d = new Date(Date.UTC(1899,11,30+Math.floor(cell.v)));
+        fechas.push({ r, c, iso:isoDeUTC(d), y:d.getUTCFullYear(), m:d.getUTCMonth()+1, dow:d.getUTCDay() });
+      } else if(cell.t==='s' && /^\s*NOTAS\s*:?/i.test(String(cell.v)) && notas===null){
+        notas = String(cell.v).replace(/^\s*NOTAS\s*:?/i,'').trim();
+      }
+    }
+  }
+  if(!fechas.length) return null;
+  const cuenta = {};
+  fechas.forEach(f=>{ const k = f.y+'-'+f.m; cuenta[k] = (cuenta[k]||0)+1; });
+  const mejorK = Object.keys(cuenta).sort((a,b)=>cuenta[b]-cuenta[a])[0];
+  const [anio, mes] = mejorK.split('-').map(Number);
+  const dias = new Map();
+  const w = { sinResponsable:[], sinActividadesEntreSemana:[], ignoradas:[], ilegibles:[], duplicadas:[], sinVinetas:[] };
+  fechas.forEach(f=>{
+    if(f.y!==anio || f.m!==mes){ if(!w.ignoradas.includes(f.iso)) w.ignoradas.push(f.iso); return; }
+    if(dias.has(f.iso)){ if(!w.duplicadas.includes(f.iso)) w.duplicadas.push(f.iso); return; }
+    const abajo = ws[XLSX.utils.encode_cell({r:f.r+1, c:f.c})];
+    let p = { actividades:[], responsable:'', sinVinetas:false };
+    if(abajo && abajo.t==='s' && String(abajo.v).trim()!=='') p = parsearCeldaDia(abajo.v);
+    if(abajo && abajo.t==='s' && String(abajo.v).trim()!=='' && !p.actividades.length) w.ilegibles.push(f.iso);
+    dias.set(f.iso, { fecha:f.iso, actividades:p.actividades, responsable:p.responsable, dow:f.dow });
+    if(p.sinVinetas) w.sinVinetas.push(f.iso);
+  });
+  const lista = [];
+  Array.from(dias.values()).sort((a,b)=>a.fecha.localeCompare(b.fecha)).forEach(d=>{
+    if(d.actividades.length){
+      lista.push({ fecha:d.fecha, actividades:d.actividades, responsable:d.responsable });
+      if(!d.responsable) w.sinResponsable.push(d.fecha);
+    } else if(d.dow>=1 && d.dow<=5) w.sinActividadesEntreSemana.push(d.fecha);
+  });
+  return { anio, mes, dias:lista, notas:notas||'', warnings:w, fechasEnMes:cuenta[mejorK] };
+}
+function parsearProgramacion(buf, archivo){
+  let wb;
+  try{ wb = XLSX.read(buf, { type:'array', cellNF:true }); }catch(e){ return { error:'No se pudo leer el archivo. ¿Es un Excel (.xlsx)?' }; }
+  let mejor = null;
+  wb.SheetNames.forEach(n=>{ const r = parsearHojaProgramacion(wb.Sheets[n]); if(r && (!mejor || r.fechasEnMes>mejor.fechasEnMes)){ mejor = r; mejor.hoja = n; } });
+  if(!mejor) return { error:'No encontré fechas de calendario en el archivo.' };
+  if(!mejor.dias.length) return { error:'Encontré las fechas de '+MESES_ES[mejor.mes-1]+' '+mejor.anio+', pero ningún día con actividades.' };
+  mejor.archivo = archivo || '';
+  return mejor;
+}
+
+/* ---------- Programación: lectura y panel de la portada ---------- */
+const DIAS_CAP = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const DIAS_CORTO = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+function isoLocal(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fechaDeIso(iso){ const p = String(iso).slice(0,10).split('-').map(Number); return new Date(p[0], p[1]-1, p[2]); }
+function claveMesDe(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function sumarDiasD(d, n){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()+n); }
+function lunesDeD(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); const w = x.getDay(); return sumarDiasD(x, w===0 ? -6 : 1-w); }
+function nombreMesClave(k){ const p = k.split('-').map(Number); return MESES_ES[p[1]-1]+' '+p[0]; }
+function capitalizar(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+async function cargarProgramacion(){
+  let a, b;
+  try{
+    a = await sb.from('programacion_dia').select('fecha,actividades,responsable');
+    b = await sb.from('programacion_mes').select('anio,mes,notas,archivo,cargado_por,cargado_en');
+  }catch(e){ return false; }
+  if(!a || !b || a.error || b.error) return false;
+  const dias = {};
+  (a.data||[]).forEach(r=>{ dias[String(r.fecha).slice(0,10)] = { actividades:Array.isArray(r.actividades)?r.actividades:[], responsable:r.responsable||'' }; });
+  const meses = {};
+  (b.data||[]).forEach(r=>{ meses[r.anio+'-'+String(r.mes).padStart(2,'0')] = Object.assign({}, r, { n:0 }); });
+  Object.keys(dias).forEach(f=>{ const m = meses[f.slice(0,7)]; if(m) m.n++; });
+  ST.programacion = { dias, meses };
+  return true;
+}
+function textoSemana(lun){
+  const dom = sumarDiasD(lun, 6);
+  if(lun.getMonth()===dom.getMonth()) return 'Semana del '+lun.getDate()+' al '+dom.getDate()+' de '+MESES_ES[dom.getMonth()];
+  return 'Semana del '+lun.getDate()+' de '+MESES_ES[lun.getMonth()]+' al '+dom.getDate()+' de '+MESES_ES[dom.getMonth()];
+}
+function infoDiaProg(datos, d){
+  const iso = isoLocal(d);
+  const cargado = !!datos.meses[claveMesDe(d)];
+  const x = datos.dias[iso];
+  return { iso, cargado, actividades:(x&&x.actividades)||[], responsable:(x&&x.responsable)||'' };
+}
+function renderPanelProgramacion(cont, datos, opts){
+  opts = opts || {};
+  const claves = Object.keys(datos.meses||{}).sort();
+  cont.innerHTML = '';
+  if(!claves.length) return false;
+  const ref = opts.hoy || todayLocal();
+  const hoyReal = opts.hoyReal || todayLocal();
+  const hoyIso = isoLocal(hoyReal);
+  let aviso = '', sel = opts.sel || null;
+  if(!sel){
+    const kHoy = claveMesDe(ref);
+    if(datos.meses[kHoy]) sel = ref;
+    else {
+      const previas = claves.filter(k=>k<kHoy);
+      const kUso = previas.length ? previas[previas.length-1] : claves[0];
+      const diasMes = Object.keys(datos.dias).filter(f=>f.slice(0,7)===kUso).sort();
+      sel = fechaDeIso(previas.length && diasMes.length ? diasMes[diasMes.length-1] : (diasMes[0]||kUso+'-01'));
+      aviso = 'Programación de '+MESES_ES[Number(kUso.slice(5))-1]+'. Aún no se ha cargado la de '+MESES_ES[ref.getMonth()]+'.';
+    }
+  }
+  let semana = lunesDeD(sel);
+  const panel = el('div','prog-panel');
+  cont.appendChild(panel);
+  function pintar(){
+    const claveSel = claveMesDe(sel);
+    const mesSel = datos.meses[claveSel];
+    const tituloMes = capitalizar(nombreMesClave(claveSel));
+    const esHoy = isoLocal(sel)===hoyIso;
+    const inf = infoDiaProg(datos, sel);
+    let h = '<div class="prog-hd"><div><h3>Programación de rutinas</h3><div class="prog-sub">'+escHtml(tituloMes)+' · '+escHtml(textoSemana(semana))+'</div></div>'+
+      '<div class="prog-ctl"><button type="button" class="prog-b" data-a="ant">‹ Anterior</button><button type="button" class="prog-b" data-a="sig">Siguiente ›</button>'+
+      (opts.sinModal ? '' : '<button type="button" class="prog-b prog-s" data-a="mes">Ver mes completo</button>')+'</div></div>';
+    if(aviso) h += '<div class="prog-aviso">'+escHtml(aviso)+'</div>';
+    // día grande
+    let acts;
+    if(inf.actividades.length) acts = inf.actividades.map(a=>'<div class="prog-act">'+escHtml(a)+'</div>').join('');
+    else acts = '<div class="prog-act prog-vacio">'+(inf.cargado ? 'Sin actividades' : 'Sin programación cargada')+'</div>';
+    const resp = inf.actividades.length ? (inf.responsable ? '<span class="prog-rl">RESPONSABLE</span>'+escHtml(inf.responsable) : '<span class="prog-rl">RESPONSABLE</span><span class="prog-sin">sin asignar</span>') : '';
+    h += '<div class="prog-hoy"><div><span class="prog-tag">'+(esHoy?'HOY':'DÍA SELECCIONADO')+'</span><div class="prog-num">'+sel.getDate()+'</div><div class="prog-fec">'+DIAS_CAP[sel.getDay()]+', '+sel.getDate()+' de '+MESES_ES[sel.getMonth()]+'</div></div>'+
+      '<div class="prog-acts">'+acts+'</div><div class="prog-rsp">'+resp+'</div></div>';
+    // los 7 días en una línea
+    h += '<div class="prog-fila">';
+    for(let i=0;i<7;i++){
+      const d = sumarDiasD(semana, i), x = infoDiaProg(datos, d), cur = isoLocal(d)===isoLocal(sel);
+      const a = x.actividades.length ? x.actividades.map(t=>'<div class="prog-a">'+escHtml(t)+'</div>').join('') : '<div class="prog-v">'+(x.cargado?'Sin actividades':'Sin programación')+'</div>';
+      const r = x.actividades.length ? '<div class="prog-r'+(x.responsable?'':' prog-r0')+'">'+(x.responsable?escHtml(x.responsable):'sin asignar')+'</div>' : '';
+      h += '<button type="button" class="prog-d'+(cur?' cur':'')+(x.actividades.length?'':' vac')+'" data-iso="'+x.iso+'"><div class="prog-dn">'+DIAS_CAP[d.getDay()]+'</div><div class="prog-dd">'+d.getDate()+'</div><div class="prog-da">'+a+'</div>'+r+'</button>';
+    }
+    h += '</div>';
+    if(mesSel && String(mesSel.notas||'').trim()) h += '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(mesSel.notas)+'</div>';
+    panel.innerHTML = h;
+    panel.querySelector('[data-a="ant"]').onclick = ()=>{ semana = sumarDiasD(semana,-7); sel = sumarDiasD(sel,-7); aviso = ''; pintar(); };
+    panel.querySelector('[data-a="sig"]').onclick = ()=>{ semana = sumarDiasD(semana,7); sel = sumarDiasD(sel,7); aviso = ''; pintar(); };
+    const bm = panel.querySelector('[data-a="mes"]');
+    if(bm) bm.onclick = ()=>abrirMesProgramacion(datos, claveSel, hoyReal);
+    panel.querySelectorAll('.prog-d').forEach(b=>{ b.onclick = ()=>{ sel = fechaDeIso(b.dataset.iso); pintar(); }; });
+  }
+  pintar();
+  return true;
+}
+function abrirMesProgramacion(datos, claveInicial, hoyReal){
+  const claves = Object.keys(datos.meses).sort();
+  let k = claveInicial;
+  openModal('<div id="progMes"></div>');
+  const m = document.querySelector('.modal'); if(m) m.classList.add('prog-modal');
+  function pintar(){
+    const [y, mm] = k.split('-').map(Number);
+    const primero = new Date(y, mm-1, 1), ultimo = new Date(y, mm, 0);
+    const ini = lunesDeD(primero);
+    const hoyIso = isoLocal(hoyReal);
+    const i = claves.indexOf(k);
+    let h = '<div class="prog-hd"><div><h3>Programación de rutinas</h3><div class="prog-sub">'+escHtml(capitalizar(nombreMesClave(k)))+' · mes completo</div></div>'+
+      '<div class="prog-ctl"><button type="button" class="prog-b" data-m="ant"'+(i<=0?' disabled':'')+'>‹ Mes anterior</button><button type="button" class="prog-b" data-m="sig"'+(i>=claves.length-1?' disabled':'')+'>Mes siguiente ›</button><button type="button" class="prog-b" onclick="window.__closeModal()">Cerrar</button></div></div>';
+    h += '<div class="prog-scroll"><table class="prog-mt"><thead><tr>'+['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','DOMINGO'].map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>';
+    let d = ini;
+    while(d <= ultimo || d.getDay()!==1){
+      if(d > ultimo && d.getDay()===1) break;
+      if(d.getDay()===1) h += '<tr>';
+      const dentro = d.getMonth()===mm-1, x = infoDiaProg(datos, d), hoy = isoLocal(d)===hoyIso;
+      h += '<td class="'+(dentro?'':'g')+(hoy?' h':'')+'"><div class="n">'+d.getDate()+(hoy?' · hoy':'')+(!dentro&&d.getDate()===1?' '+MESES_ES[d.getMonth()].slice(0,3):'')+'</div>'+
+        (dentro && x.actividades.length ? x.actividades.map(t=>'<div class="t">'+escHtml(t)+'</div>').join('')+(x.responsable?'<div class="p">'+escHtml(x.responsable)+'</div>':'<div class="p p0">sin asignar</div>') : '')+'</td>';
+      if(d.getDay()===0) h += '</tr>';
+      d = sumarDiasD(d,1);
+    }
+    h += '</tbody></table></div>';
+    const notas = datos.meses[k] && String(datos.meses[k].notas||'').trim();
+    if(notas) h += '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(notas)+'</div>';
+    $('#progMes').innerHTML = h;
+    const a = $('#progMes [data-m="ant"]'), s = $('#progMes [data-m="sig"]');
+    if(a) a.onclick = ()=>{ if(i>0){ k = claves[i-1]; pintar(); } };
+    if(s) s.onclick = ()=>{ if(i<claves.length-1){ k = claves[i+1]; pintar(); } };
+  }
+  pintar();
+}
+
+/* ---------- Programación: carga mensual (solo administradores) ---------- */
+function listaFechas(arr){ return arr.map(f=>f.slice(8)+'/'+f.slice(5,7)).join(', '); }
+async function procesarArchivoProgramacion(buf, nombre){
+  const r = parsearProgramacion(buf, nombre);
+  if(r.error){ ST.progPreview = null; ST.progError = r.error; return; }
+  ST.progError = null;
+  ST.progPreview = r;
+}
+function pintarProgramacionAdmin(cont){
+  const prev = ST.progPreview;
+  const meses = (ST.programacion && ST.programacion.meses) || {};
+  let h = '<div class="pbanner" style="background:#F7F3FD;border-color:#CDBDEB"><span><b>Programación de rutinas.</b> Sube el Excel del mes. La app detecta el mes por las fechas, te muestra cómo quedará en la portada y, al confirmar, reemplaza ese mes (el anterior queda respaldado).</span><span><button type="button" class="btn primary" id="progSubir">Subir Excel del mes</button><input type="file" id="progArchivo" accept=".xlsx,.xls" style="display:none"></span></div>';
+  if(ST.progError) h += '<div class="form-msg err">'+escHtml(ST.progError)+'</div>';
+  if(prev){
+    const w = prev.warnings, k = prev.anio+'-'+String(prev.mes).padStart(2,'0'), yaEsta = !!meses[k];
+    h += '<div class="pcard"><div class="pcard-h"><div><b>'+escHtml(prev.archivo||'Archivo')+'</b> <span class="pmut">detectado: '+escHtml(capitalizar(MESES_ES[prev.mes-1]))+' '+prev.anio+' (por las fechas) · '+prev.dias.length+' días con actividades</span></div></div>';
+    if(yaEsta) h += '<div class="phint" style="margin:0 0 6px">Este mes ya está cargado: al guardar se reemplaza, y la versión anterior queda respaldada.</div>';
+    if(w.sinResponsable.length) h += '<div class="prog-av">⚠ '+w.sinResponsable.length+' '+(w.sinResponsable.length===1?'día tiene':'días tienen')+' actividades sin responsable ('+listaFechas(w.sinResponsable)+').</div>';
+    if(w.sinActividadesEntreSemana.length) h += '<div class="prog-av">⚠ '+w.sinActividadesEntreSemana.length+' '+(w.sinActividadesEntreSemana.length===1?'día entre semana sin actividades':'días entre semana sin actividades')+' ('+listaFechas(w.sinActividadesEntreSemana)+').</div>';
+    if(w.ilegibles.length) h += '<div class="prog-av">⚠ No se pudieron leer las actividades de: '+listaFechas(w.ilegibles)+'.</div>';
+    if(w.sinVinetas.length) h += '<div class="prog-av">⚠ Sin guion al inicio de las actividades (se tomaron como actividades, sin responsable): '+listaFechas(w.sinVinetas)+'.</div>';
+    if(w.duplicadas.length) h += '<div class="prog-av">⚠ Fechas repetidas en el archivo (se usó la primera): '+listaFechas(w.duplicadas)+'.</div>';
+    if(w.ignoradas.length) h += '<div class="prog-av prog-info">ℹ Se ignoran las fechas de otros meses: '+listaFechas(w.ignoradas)+'.'+(prev.notas?'':' Las notas del mes están vacías.')+'</div>';
+    else if(!prev.notas) h += '<div class="prog-av prog-info">ℹ Las notas del mes están vacías.</div>';
+    h += '<div class="ptit" style="margin-top:12px">Así se verá en la portada</div><div id="progPrev"></div>';
+    h += '<div class="form-msg hidden" id="progMsg"></div><div class="form-actions" style="margin-top:10px"><button type="button" class="btn" id="progCancelar">Cancelar</button><button type="button" class="btn primary" id="progGuardar">'+(yaEsta?'Guardar y reemplazar ':'Guardar ')+escHtml(MESES_ES[prev.mes-1])+'</button></div></div>';
+  }
+  h += '<div class="ptit">Meses cargados</div>';
+  const filas = Object.keys(meses).sort().reverse().map(k=>{ const m = meses[k]; return '<tr><td>'+escHtml(capitalizar(nombreMesClave(k)))+'</td><td>'+escHtml(m.cargado_por||'—')+'</td><td>'+fmtFechaHora(m.cargado_en)+'</td><td>'+m.n+'</td></tr>'; }).join('');
+  h += filas ? '<table class="obs-table"><thead><tr><th>Mes</th><th>Cargado por</th><th>Cuándo</th><th>Días</th></tr></thead><tbody>'+filas+'</tbody></table>' : '<div class="empty-msg">Todavía no se ha cargado ninguna programación.</div>';
+  cont.innerHTML = h;
+  const inp = cont.querySelector('#progArchivo');
+  cont.querySelector('#progSubir').onclick = ()=>inp.click();
+  inp.onchange = async ()=>{
+    const f = inp.files && inp.files[0]; if(!f) return;
+    const buf = await f.arrayBuffer();
+    await procesarArchivoProgramacion(new Uint8Array(buf), f.name);
+    pintarProgramacionAdmin(cont);
+  };
+  if(prev){
+    const dias = {}; prev.dias.forEach(d=>{ dias[d.fecha] = { actividades:d.actividades, responsable:d.responsable }; });
+    const meta = {}; meta[prev.anio+'-'+String(prev.mes).padStart(2,'0')] = { notas:prev.notas };
+    renderPanelProgramacion(cont.querySelector('#progPrev'), { dias, meses:meta }, { sel:fechaDeIso(prev.dias[0].fecha) });
+    cont.querySelector('#progCancelar').onclick = ()=>{ ST.progPreview = null; ST.progError = null; pintarProgramacionAdmin(cont); };
+    cont.querySelector('#progGuardar').onclick = async (e)=>{
+      e.target.disabled = true;
+      const r = await sb.rpc('cargar_programacion', { p_datos:{ anio:prev.anio, mes:prev.mes, archivo:prev.archivo||null, notas:prev.notas||'', dias:prev.dias } });
+      if(r.error){ formError('progMsg', r.error.message); e.target.disabled = false; return; }
+      await cargarProgramacion();
+      const d = r.data || {};
+      ST.paramMsg = 'Programación de '+MESES_ES[prev.mes-1]+' '+prev.anio+' '+(d.reemplazado?'reemplazada':'cargada')+': '+prev.dias.length+' días.';
+      ST.progPreview = null; ST.progError = null;
+      pintarParametros();
+    };
+  }
+}
+
 /* ---- construcción de la pantalla ---- */
 function lab(t, inner, cls){ return '<label'+(cls?' class="'+cls+'"':'')+'><span>'+t+'</span>'+inner+'</label>'; }
 function optSev(v){ return '<option value="Media"'+(v==='Media'?' selected':'')+'>Amarilla</option><option value="Alta"'+(v==='Alta'?' selected':'')+'>Roja</option>'; }
@@ -1251,7 +1564,7 @@ function pintarParametros(){
   if(!raiz || !raiz.isConnected) return;
   raiz.innerHTML = '';
   const fams = FAMILIAS_VISIBLES.filter(f=>FAMILY_FIELDS[f]);
-  if(!ST.paramTab || (ST.paramTab!=='__registro' && fams.indexOf(ST.paramTab)===-1)) ST.paramTab = fams[0];
+  if(!ST.paramTab || (ST.paramTab!=='__registro' && ST.paramTab!=='__programacion' && fams.indexOf(ST.paramTab)===-1)) ST.paramTab = fams[0];
   const n = nCambiosBorrador();
   const cab = el('div');
   cab.innerHTML = '<h2 class="view-title">Parámetros</h2><p class="view-sub">Solo administradores. Los cambios quedan en borrador hasta que los apliques.</p>';
@@ -1273,7 +1586,7 @@ function pintarParametros(){
   raiz.appendChild(hist);
   hist.querySelector('#pbHist').onclick = abrirActualizarHistorial;
   const barra = el('div','tabs-fam no-print');
-  const todas = fams.map(f=>({id:f,label:f})).concat([{id:'__registro',label:'Registro de cambios'}]);
+  const todas = fams.map(f=>({id:f,label:f})).concat([{id:'__programacion',label:'Programación'},{id:'__registro',label:'Registro de cambios'}]);
   todas.forEach(t=>{
     const bt = el('button','tab-fam'+(t.id===ST.paramTab?' on':''),escHtml(t.label));
     bt.type = 'button';
@@ -1283,7 +1596,8 @@ function pintarParametros(){
   raiz.appendChild(barra);
   const cont = el('div','pcont');
   raiz.appendChild(cont);
-  if(ST.paramTab==='__registro') pintarRegistro(cont);
+  if(ST.paramTab==='__programacion') pintarProgramacionAdmin(cont);
+  else if(ST.paramTab==='__registro') pintarRegistro(cont);
   else pintarContenidoFamilia(cont, ST.paramTab);
 }
 function renderParametros(app){
@@ -1431,6 +1745,10 @@ function renderStatus(app){
   app.appendChild(grid);
 
   const obsAbiertas = ST.observaciones.filter(o=>o.estado==='Abierta').length;
+  const progCont = el('div');
+  app.appendChild(progCont);
+  renderPanelProgramacion(progCont, ST.programacion, { hoy: ST.cutoff });
+
   const totals = el('div','totals-strip');
   totals.innerHTML = `
     <div class="total-box"><div class="v">${obsAbiertas}</div><div class="l">Observaciones abiertas</div></div>
@@ -4558,6 +4876,7 @@ async function iniciar(){
   try{
     await cargarTodo();
     await cargarParametros();
+    await cargarProgramacion();
     await cargarPropuestas();
   }catch(err){
     app.innerHTML = '<div class="center-card"><h1>No se pudo cargar la información</h1><p>'+err.message+'</p></div>';
