@@ -1407,9 +1407,14 @@ function renderPanelProgramacion(cont, datos, opts){
       const bI = panel.querySelector('[data-m="imp"]');
       if(bI) bI.onclick = ()=>imprimirMesProgramacion(datos, kVer);
       panel.querySelectorAll('.prog-mt td[data-iso]').forEach(td=>{ td.onclick = ()=>{
-        sel = fechaDeIso(td.dataset.iso); semana = lunesDeD(sel); kMes = null; aviso = ''; pintar();
-        const g = panel.querySelector('.prog-hoy');
-        if(g && g.scrollIntoView) g.scrollIntoView({ behavior:'smooth', block:'center' });
+        const iso = td.dataset.iso, top0 = td.getBoundingClientRect().top;
+        sel = fechaDeIso(iso); semana = lunesDeD(sel); kMes = null; aviso = ''; pintar();
+        /* la página se queda donde estás: la celda tocada permanece en el mismo lugar de la pantalla */
+        const nuevo = panel.querySelector('.prog-mt td[data-iso="'+iso+'"]');
+        if(nuevo){
+          const d = nuevo.getBoundingClientRect().top - top0;
+          if(d && window.scrollBy){ try{ window.scrollBy(0, d); }catch(e){} }
+        }
       }; });
     }
     pintando = false;
