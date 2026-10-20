@@ -302,6 +302,24 @@
   @media print{
     header#topbar,.crumb,.no-print{display:none!important;}
   }
+  #printMes{display:none;}
+  @page mes{size:A4 landscape;margin:10mm;}
+  @media print{
+    body.imprimiendo-mes > *:not(#printMes){display:none!important;}
+    body.imprimiendo-mes #printMes{display:block!important;page:mes;color:#000;background:#fff;}
+    #printMes h2{margin:0 0 2px;font-size:18px;color:#2B0A55;}
+    #printMes .pm-sub{font-size:11px;color:#444;margin-bottom:8px;}
+    #printMes .prog-scroll{border:none;overflow:visible;max-height:none;}
+    #printMes .prog-mt{min-width:0;width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #333;height:150mm;}
+    #printMes .prog-mt th{background:#fff;color:#2B0A55;border:1px solid #333;border-bottom:2px solid #2B0A55;font-size:10px;padding:4px 6px;position:static;}
+    #printMes .prog-mt td{border:1px solid #666;padding:4px 6px;height:auto;vertical-align:top;background:#fff;box-shadow:none;page-break-inside:avoid;}
+    #printMes .prog-mt td.g,#printMes .prog-mt td.g .n{background:#fff;color:#999;}
+    #printMes .prog-mt .n{font-size:11px;font-weight:700;color:#000;}
+    #printMes .prog-mt .t{font-size:var(--pm-fs,10px);line-height:1.25;color:#000;margin-bottom:2px;}
+    #printMes .prog-mt .p{font-size:var(--pm-fs,10px);color:#222;font-weight:700;margin-top:3px;}
+    #printMes .pm-notas{margin-top:8px;font-size:11px;border-top:1px solid #999;padding-top:4px;}
+    #printMes .pm-pie{margin-top:6px;font-size:9px;color:#666;text-align:right;}
+  }
   .kbd-hint{font-size:11px;color:var(--text-low);margin-top:20px;}
   .kbd-hint kbd{background:#fff;border:1px solid var(--line);border-radius:3px;padding:1px 6px;font-family:var(--font-mono);}
   .hidden{display:none!important;}
@@ -1295,6 +1313,22 @@ function htmlMesProgramacion(datos, k, hoyIso, selIso){
   }
   return h+'</tbody></table></div>';
 }
+function imprimirMesProgramacion(datos, k){
+  let cont = document.getElementById('printMes');
+  if(!cont){ cont = document.createElement('div'); cont.id = 'printMes'; document.body.appendChild(cont); }
+  const tabla = htmlMesProgramacion(datos, k, '', '');
+  const filas = ((tabla.split('<tbody>')[1]||'').match(/<tr>/g)||[]).length;
+  const ahora = new Date();
+  const fecha = String(ahora.getDate()).padStart(2,'0')+'/'+String(ahora.getMonth()+1).padStart(2,'0')+'/'+ahora.getFullYear()+' '+String(ahora.getHours()).padStart(2,'0')+':'+String(ahora.getMinutes()).padStart(2,'0');
+  const notas = datos.meses[k] && String(datos.meses[k].notas||'').trim();
+  cont.style.setProperty('--pm-fs', filas>=6 ? '8.5px' : '10px');
+  cont.innerHTML = '<h2>Programación de rutinas · '+escHtml(capitalizar(nombreMesClave(k)))+'</h2><div class="pm-sub">Kimberly-Clark · Sodexo</div>'+tabla+
+    (notas ? '<div class="pm-notas"><b>Notas del mes:</b> '+escHtml(notas)+'</div>' : '')+'<div class="pm-pie">Impreso el '+fecha+'</div>';
+  document.body.classList.add('imprimiendo-mes');
+  const fin = ()=>{ document.body.classList.remove('imprimiendo-mes'); cont.innerHTML = ''; window.removeEventListener('afterprint', fin); };
+  window.addEventListener('afterprint', fin);
+  setTimeout(()=>{ try{ window.print(); }catch(e){ fin(); } }, 60);
+}
 function renderPanelProgramacion(cont, datos, opts){
   opts = opts || {};
   const claves = Object.keys(datos.meses||{}).sort();
@@ -1318,9 +1352,9 @@ function renderPanelProgramacion(cont, datos, opts){
   let semana = lunesDeD(sel), mesAbierto = false, kMes = null, activo = false, pintando = false;
   const panel = el('div','prog-panel');
   panel.tabIndex = 0;
-  panel.setAttribute('aria-label','Programación de rutinas. Con el panel activo, las flechas izquierda y derecha cambian de día.');
+  panel.setAttribute('aria-label','Programación de rutinas. Con el panel activo, las flechas cambian de día.');
   cont.appendChild(panel);
-  const TXT_OFF = 'Haz clic aquí y usa ← → para cambiar de día', TXT_ON = '← → cambian de día';
+  const TXT_OFF = 'Haz clic aquí y usa ← → ↑ ↓ para cambiar de día', TXT_ON = '← → ↑ ↓ cambian de día';
   function pintar(subir){
     pintando = true;
     const claveSel = claveMesDe(sel);
@@ -1352,7 +1386,7 @@ function renderPanelProgramacion(cont, datos, opts){
       const i = claves.indexOf(kVer);
       const notasM = datos.meses[kVer] && String(datos.meses[kVer].notas||'').trim();
       h += '<div class="prog-mes"><div class="prog-mh"><div class="prog-mt2">'+escHtml(capitalizar(nombreMesClave(kVer)))+' · mes completo</div>'+
-        '<div class="prog-ctl"><button type="button" class="prog-b" data-m="ant"'+(i<=0?' disabled':'')+'>‹ Mes anterior</button><button type="button" class="prog-b" data-m="sig"'+(i>=claves.length-1?' disabled':'')+'>Mes siguiente ›</button></div></div>'+
+        '<div class="prog-ctl"><button type="button" class="prog-b" data-m="ant"'+(i<=0?' disabled':'')+'>‹ Mes anterior</button><button type="button" class="prog-b" data-m="sig"'+(i>=claves.length-1?' disabled':'')+'>Mes siguiente ›</button><button type="button" class="prog-b" data-m="imp">Imprimir mes</button></div></div>'+
         htmlMesProgramacion(datos, kVer, hoyIso, isoLocal(sel))+
         '<div class="prog-pie">Toca un día para verlo en la tarjeta grande de arriba.</div>'+
         (notasM ? '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(notasM)+'</div>' : '')+'</div>';
@@ -1370,6 +1404,8 @@ function renderPanelProgramacion(cont, datos, opts){
       const i = claves.indexOf(kVer);
       if(bA) bA.onclick = ()=>{ if(i>0){ kMes = claves[i-1]; pintar(); } };
       if(bS) bS.onclick = ()=>{ if(i<claves.length-1){ kMes = claves[i+1]; pintar(); } };
+      const bI = panel.querySelector('[data-m="imp"]');
+      if(bI) bI.onclick = ()=>imprimirMesProgramacion(datos, kVer);
       panel.querySelectorAll('.prog-mt td[data-iso]').forEach(td=>{ td.onclick = ()=>{
         sel = fechaDeIso(td.dataset.iso); semana = lunesDeD(sel); kMes = null; aviso = ''; pintar();
         const g = panel.querySelector('.prog-hoy');
@@ -1397,9 +1433,9 @@ function renderPanelProgramacion(cont, datos, opts){
   });
   panel.addEventListener('keydown', (e)=>{
     if(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-    if(e.key!=='ArrowLeft' && e.key!=='ArrowRight') return;
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].indexOf(e.key)===-1) return;
     e.preventDefault();
-    sel = sumarDiasD(sel, e.key==='ArrowRight' ? 1 : -1);
+    sel = sumarDiasD(sel, (e.key==='ArrowRight' || e.key==='ArrowDown') ? 1 : -1);
     semana = lunesDeD(sel); kMes = null; aviso = ''; activo = true;
     pintar();
   });
