@@ -1352,9 +1352,9 @@ function renderPanelProgramacion(cont, datos, opts){
   let semana = lunesDeD(sel), mesAbierto = false, kMes = null, activo = false, pintando = false;
   const panel = el('div','prog-panel');
   panel.tabIndex = 0;
-  panel.setAttribute('aria-label','Programación de rutinas. Con el panel activo, las flechas cambian de día.');
+  panel.setAttribute('aria-label','Programación de rutinas. Con el panel activo, las flechas izquierda y derecha cambian de día, y arriba y abajo cambian de semana.');
   cont.appendChild(panel);
-  const TXT_OFF = 'Haz clic aquí y usa ← → ↑ ↓ para cambiar de día', TXT_ON = '← → ↑ ↓ cambian de día';
+  const TXT_OFF = 'Haz clic aquí y usa ← → para el día y ↑ ↓ para la semana', TXT_ON = '← → cambian de día · ↑ ↓ cambian de semana';
   function pintar(subir){
     pintando = true;
     const claveSel = claveMesDe(sel);
@@ -1435,7 +1435,8 @@ function renderPanelProgramacion(cont, datos, opts){
     if(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].indexOf(e.key)===-1) return;
     e.preventDefault();
-    sel = sumarDiasD(sel, (e.key==='ArrowRight' || e.key==='ArrowDown') ? 1 : -1);
+    const paso = (e.key==='ArrowLeft' || e.key==='ArrowRight') ? 1 : 7;
+    sel = sumarDiasD(sel, (e.key==='ArrowRight' || e.key==='ArrowDown') ? paso : -paso);
     semana = lunesDeD(sel); kMes = null; aviso = ''; activo = true;
     pintar();
   });
