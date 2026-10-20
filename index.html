@@ -74,6 +74,9 @@
   .prog-v{font-size:11px;color:#AEB2C4;}
   .prog-r{border-top:1px solid #E6E8F0;padding-top:7px;margin-top:3px;font-size:11.5px;font-weight:600;color:var(--marca-morado);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .prog-r0{color:#AEB2C4;font-weight:400;}
+  .prog-panel:focus{outline:none;}
+  .prog-panel:focus-visible{outline:2px solid #CDBDEB;outline-offset:3px;}
+  .prog-hint{font-size:11.5px;color:#8A8FA3;margin-top:10px;text-align:right;}
   .prog-notas{font-size:13px;color:var(--text-mid);margin-top:12px;padding-top:10px;border-top:1px solid #EEF0F6;}
   .prog-mes{margin-top:16px;padding-top:14px;border-top:1px solid #E6E8F0;}
   .prog-mh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
@@ -1312,10 +1315,14 @@ function renderPanelProgramacion(cont, datos, opts){
       aviso = 'Programación de '+MESES_ES[Number(kUso.slice(5))-1]+'. Aún no se ha cargado la de '+MESES_ES[ref.getMonth()]+'.';
     }
   }
-  let semana = lunesDeD(sel), mesAbierto = false, kMes = null;
+  let semana = lunesDeD(sel), mesAbierto = false, kMes = null, activo = false, pintando = false;
   const panel = el('div','prog-panel');
+  panel.tabIndex = 0;
+  panel.setAttribute('aria-label','Programación de rutinas. Con el panel activo, las flechas izquierda y derecha cambian de día.');
   cont.appendChild(panel);
+  const TXT_OFF = 'Haz clic aquí y usa ← → para cambiar de día', TXT_ON = '← → cambian de día';
   function pintar(subir){
+    pintando = true;
     const claveSel = claveMesDe(sel);
     const mesSel = datos.meses[claveSel];
     const tituloMes = capitalizar(nombreMesClave(claveSel));
@@ -1351,6 +1358,7 @@ function renderPanelProgramacion(cont, datos, opts){
         (notasM ? '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(notasM)+'</div>' : '')+'</div>';
     }
     if(!(mesAbierto && kVer && String(datos.meses[kVer].notas||'').trim()) && mesSel && String(mesSel.notas||'').trim()) h += '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(mesSel.notas)+'</div>';
+    h += '<div class="prog-hint">'+(activo?TXT_ON:TXT_OFF)+'</div>';
     panel.innerHTML = h;
     panel.querySelector('[data-a="ant"]').onclick = ()=>{ semana = sumarDiasD(semana,-7); sel = sumarDiasD(sel,-7); aviso = ''; kMes = null; pintar(); };
     panel.querySelector('[data-a="sig"]').onclick = ()=>{ semana = sumarDiasD(semana,7); sel = sumarDiasD(sel,7); aviso = ''; kMes = null; pintar(); };
@@ -1368,7 +1376,33 @@ function renderPanelProgramacion(cont, datos, opts){
         if(g && g.scrollIntoView) g.scrollIntoView({ behavior:'smooth', block:'center' });
       }; });
     }
+    pintando = false;
+    if(activo && document.activeElement!==panel){ try{ panel.focus({ preventScroll:true }); }catch(e){} }
   }
+  /* teclado: con el panel activo, ← y → cambian de día (↑ y ↓ se dejan al navegador) */
+  function poner(v){
+    activo = v;
+    const hh = panel.querySelector('.prog-hint');
+    if(hh) hh.textContent = v ? TXT_ON : TXT_OFF;
+  }
+  panel.addEventListener('focusin', ()=>{ if(!pintando) poner(true); });
+  panel.addEventListener('focusout', (e)=>{
+    if(pintando) return;
+    if(e.relatedTarget && panel.contains(e.relatedTarget)) return;
+    poner(false);
+  });
+  panel.addEventListener('click', ()=>{
+    poner(true);
+    if(document.activeElement!==panel){ try{ panel.focus({ preventScroll:true }); }catch(e){} }
+  });
+  panel.addEventListener('keydown', (e)=>{
+    if(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if(e.key!=='ArrowLeft' && e.key!=='ArrowRight') return;
+    e.preventDefault();
+    sel = sumarDiasD(sel, e.key==='ArrowRight' ? 1 : -1);
+    semana = lunesDeD(sel); kMes = null; aviso = ''; activo = true;
+    pintar();
+  });
   pintar();
   return true;
 }
