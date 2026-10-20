@@ -78,12 +78,17 @@
   .prog-r{border-top:1px solid #E6E8F0;padding-top:7px;margin-top:3px;font-size:11.5px;font-weight:600;color:var(--marca-morado);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .prog-r0{color:#AEB2C4;font-weight:400;}
   .prog-notas{font-size:13px;color:var(--text-mid);margin-top:12px;padding-top:10px;border-top:1px solid #EEF0F6;}
-  .modal.prog-modal{max-width:1120px;width:96vw;}
-  .prog-scroll{border:1px solid #E1E4EC;border-radius:12px;overflow:auto;max-height:62vh;}
+  .prog-mes{margin-top:16px;padding-top:14px;border-top:1px solid #E6E8F0;}
+  .prog-mh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .prog-mt2{font-size:16px;font-weight:700;color:var(--marca-morado);}
+  .prog-pie{font-size:12px;color:#8A8FA3;margin-top:8px;}
+  .prog-scroll{border:1px solid #E1E4EC;border-radius:12px;overflow:auto;}
   .prog-mt{width:100%;border-collapse:collapse;table-layout:fixed;min-width:760px;}
   .prog-mt th{background:#2B0A55;color:#fff;font-size:11.5px;letter-spacing:.09em;font-weight:700;padding:10px;text-align:left;position:sticky;top:0;}
   .prog-mt td{vertical-align:top;padding:8px 10px 10px;border-top:1px solid #E6E8F0;border-right:1px solid #EEF0F6;background:#fff;overflow-wrap:break-word;}
   .prog-mt td:last-child{border-right:none;}
+  .prog-mt td[data-iso]{cursor:pointer;} .prog-mt td[data-iso]:hover{background:#FAF7FF;}
+  .prog-mt td.sel{outline:2px solid #3B0A6B;outline-offset:-2px;}
   .prog-mt td.g{background:#F7F7FB;} .prog-mt td.g .n{color:#C3C6D4;}
   .prog-mt td.h{box-shadow:inset 0 3px 0 #E60012;background:#FDFBFF;}
   .prog-mt .n{font-size:14px;font-weight:700;color:var(--marca-morado);margin-bottom:4px;}
@@ -1274,6 +1279,22 @@ function infoDiaProg(datos, d){
   const x = datos.dias[iso];
   return { iso, cargado, actividades:(x&&x.actividades)||[], responsable:(x&&x.responsable)||'' };
 }
+function htmlMesProgramacion(datos, k, hoyIso, selIso){
+  const [y, mm] = k.split('-').map(Number);
+  const primero = new Date(y, mm-1, 1), ultimo = new Date(y, mm, 0);
+  let h = '<div class="prog-scroll"><table class="prog-mt"><thead><tr>'+['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','DOMINGO'].map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>';
+  let d = lunesDeD(primero);
+  while(d <= ultimo || d.getDay()!==1){
+    if(d.getDay()===1) h += '<tr>';
+    const dentro = d.getMonth()===mm-1, x = infoDiaProg(datos, d), iso = isoLocal(d);
+    const hoy = iso===hoyIso, sel = iso===selIso;
+    h += '<td class="'+(dentro?'':'g')+(hoy?' h':'')+(sel&&dentro?' sel':'')+'"'+(dentro?' data-iso="'+iso+'"':'')+'><div class="n">'+d.getDate()+(hoy?' · hoy':'')+(!dentro&&d.getDate()===1?' '+MESES_ES[d.getMonth()].slice(0,3):'')+'</div>'+
+      (dentro && x.actividades.length ? x.actividades.map(t=>'<div class="t">'+escHtml(t)+'</div>').join('')+(x.responsable?'<div class="p">'+escHtml(x.responsable)+'</div>':'<div class="p p0">sin asignar</div>') : '')+'</td>';
+    if(d.getDay()===0) h += '</tr>';
+    d = sumarDiasD(d,1);
+  }
+  return h+'</tbody></table></div>';
+}
 function renderPanelProgramacion(cont, datos, opts){
   opts = opts || {};
   const claves = Object.keys(datos.meses||{}).sort();
@@ -1294,10 +1315,10 @@ function renderPanelProgramacion(cont, datos, opts){
       aviso = 'Programación de '+MESES_ES[Number(kUso.slice(5))-1]+'. Aún no se ha cargado la de '+MESES_ES[ref.getMonth()]+'.';
     }
   }
-  let semana = lunesDeD(sel);
+  let semana = lunesDeD(sel), mesAbierto = false, kMes = null;
   const panel = el('div','prog-panel');
   cont.appendChild(panel);
-  function pintar(){
+  function pintar(subir){
     const claveSel = claveMesDe(sel);
     const mesSel = datos.meses[claveSel];
     const tituloMes = capitalizar(nombreMesClave(claveSel));
@@ -1305,16 +1326,14 @@ function renderPanelProgramacion(cont, datos, opts){
     const inf = infoDiaProg(datos, sel);
     let h = '<div class="prog-hd"><div><h3>Programación de rutinas</h3><div class="prog-sub">'+escHtml(tituloMes)+' · '+escHtml(textoSemana(semana))+'</div></div>'+
       '<div class="prog-ctl"><button type="button" class="prog-b" data-a="ant">‹ Anterior</button><button type="button" class="prog-b" data-a="sig">Siguiente ›</button>'+
-      (opts.sinModal ? '' : '<button type="button" class="prog-b prog-s" data-a="mes">Ver mes completo</button>')+'</div></div>';
+      (opts.sinMes ? '' : '<button type="button" class="prog-b prog-s" data-a="mes" aria-expanded="'+mesAbierto+'">'+(mesAbierto?'Ocultar mes completo':'Ver mes completo')+'</button>')+'</div></div>';
     if(aviso) h += '<div class="prog-aviso">'+escHtml(aviso)+'</div>';
-    // día grande
     let acts;
     if(inf.actividades.length) acts = inf.actividades.map(a=>'<div class="prog-act">'+escHtml(a)+'</div>').join('');
     else acts = '<div class="prog-act prog-vacio">'+(inf.cargado ? 'Sin actividades' : 'Sin programación cargada')+'</div>';
     const resp = inf.actividades.length ? (inf.responsable ? '<span class="prog-rl">RESPONSABLE</span>'+escHtml(inf.responsable) : '<span class="prog-rl">RESPONSABLE</span><span class="prog-sin">sin asignar</span>') : '';
     h += '<div class="prog-hoy"><div><span class="prog-tag">'+(esHoy?'HOY':'DÍA SELECCIONADO')+'</span><div class="prog-num">'+sel.getDate()+'</div><div class="prog-fec">'+DIAS_CAP[sel.getDay()]+', '+sel.getDate()+' de '+MESES_ES[sel.getMonth()]+'</div></div>'+
       '<div class="prog-acts">'+acts+'</div><div class="prog-rsp">'+resp+'</div></div>';
-    // los 7 días en una línea
     h += '<div class="prog-fila">';
     for(let i=0;i<7;i++){
       const d = sumarDiasD(semana, i), x = infoDiaProg(datos, d), cur = isoLocal(d)===isoLocal(sel);
@@ -1323,50 +1342,38 @@ function renderPanelProgramacion(cont, datos, opts){
       h += '<button type="button" class="prog-d'+(cur?' cur':'')+(x.actividades.length?'':' vac')+'" data-iso="'+x.iso+'"><div class="prog-dn">'+DIAS_CAP[d.getDay()]+'</div><div class="prog-dd">'+d.getDate()+'</div><div class="prog-da">'+a+'</div>'+r+'</button>';
     }
     h += '</div>';
-    if(mesSel && String(mesSel.notas||'').trim()) h += '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(mesSel.notas)+'</div>';
+    let kVer = null;
+    if(mesAbierto){
+      kVer = (kMes && datos.meses[kMes]) ? kMes : (datos.meses[claveSel] ? claveSel : claves[claves.length-1]);
+      const i = claves.indexOf(kVer);
+      const notasM = datos.meses[kVer] && String(datos.meses[kVer].notas||'').trim();
+      h += '<div class="prog-mes"><div class="prog-mh"><div class="prog-mt2">'+escHtml(capitalizar(nombreMesClave(kVer)))+' · mes completo</div>'+
+        '<div class="prog-ctl"><button type="button" class="prog-b" data-m="ant"'+(i<=0?' disabled':'')+'>‹ Mes anterior</button><button type="button" class="prog-b" data-m="sig"'+(i>=claves.length-1?' disabled':'')+'>Mes siguiente ›</button></div></div>'+
+        htmlMesProgramacion(datos, kVer, hoyIso, isoLocal(sel))+
+        '<div class="prog-pie">Toca un día para verlo en la tarjeta grande de arriba.</div>'+
+        (notasM ? '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(notasM)+'</div>' : '')+'</div>';
+    }
+    if(!(mesAbierto && kVer && String(datos.meses[kVer].notas||'').trim()) && mesSel && String(mesSel.notas||'').trim()) h += '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(mesSel.notas)+'</div>';
     panel.innerHTML = h;
-    panel.querySelector('[data-a="ant"]').onclick = ()=>{ semana = sumarDiasD(semana,-7); sel = sumarDiasD(sel,-7); aviso = ''; pintar(); };
-    panel.querySelector('[data-a="sig"]').onclick = ()=>{ semana = sumarDiasD(semana,7); sel = sumarDiasD(sel,7); aviso = ''; pintar(); };
+    panel.querySelector('[data-a="ant"]').onclick = ()=>{ semana = sumarDiasD(semana,-7); sel = sumarDiasD(sel,-7); aviso = ''; kMes = null; pintar(); };
+    panel.querySelector('[data-a="sig"]').onclick = ()=>{ semana = sumarDiasD(semana,7); sel = sumarDiasD(sel,7); aviso = ''; kMes = null; pintar(); };
     const bm = panel.querySelector('[data-a="mes"]');
-    if(bm) bm.onclick = ()=>abrirMesProgramacion(datos, claveSel, hoyReal);
-    panel.querySelectorAll('.prog-d').forEach(b=>{ b.onclick = ()=>{ sel = fechaDeIso(b.dataset.iso); pintar(); }; });
+    if(bm) bm.onclick = ()=>{ mesAbierto = !mesAbierto; kMes = null; pintar(); };
+    panel.querySelectorAll('.prog-d').forEach(b=>{ b.onclick = ()=>{ sel = fechaDeIso(b.dataset.iso); kMes = null; pintar(); }; });
+    if(mesAbierto){
+      const bA = panel.querySelector('[data-m="ant"]'), bS = panel.querySelector('[data-m="sig"]');
+      const i = claves.indexOf(kVer);
+      if(bA) bA.onclick = ()=>{ if(i>0){ kMes = claves[i-1]; pintar(); } };
+      if(bS) bS.onclick = ()=>{ if(i<claves.length-1){ kMes = claves[i+1]; pintar(); } };
+      panel.querySelectorAll('.prog-mt td[data-iso]').forEach(td=>{ td.onclick = ()=>{
+        sel = fechaDeIso(td.dataset.iso); semana = lunesDeD(sel); kMes = null; aviso = ''; pintar();
+        const g = panel.querySelector('.prog-hoy');
+        if(g && g.scrollIntoView) g.scrollIntoView({ behavior:'smooth', block:'center' });
+      }; });
+    }
   }
   pintar();
   return true;
-}
-function abrirMesProgramacion(datos, claveInicial, hoyReal){
-  const claves = Object.keys(datos.meses).sort();
-  let k = claveInicial;
-  openModal('<div id="progMes"></div>');
-  const m = document.querySelector('.modal'); if(m) m.classList.add('prog-modal');
-  function pintar(){
-    const [y, mm] = k.split('-').map(Number);
-    const primero = new Date(y, mm-1, 1), ultimo = new Date(y, mm, 0);
-    const ini = lunesDeD(primero);
-    const hoyIso = isoLocal(hoyReal);
-    const i = claves.indexOf(k);
-    let h = '<div class="prog-hd"><div><h3>Programación de rutinas</h3><div class="prog-sub">'+escHtml(capitalizar(nombreMesClave(k)))+' · mes completo</div></div>'+
-      '<div class="prog-ctl"><button type="button" class="prog-b" data-m="ant"'+(i<=0?' disabled':'')+'>‹ Mes anterior</button><button type="button" class="prog-b" data-m="sig"'+(i>=claves.length-1?' disabled':'')+'>Mes siguiente ›</button><button type="button" class="prog-b" onclick="window.__closeModal()">Cerrar</button></div></div>';
-    h += '<div class="prog-scroll"><table class="prog-mt"><thead><tr>'+['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','DOMINGO'].map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>';
-    let d = ini;
-    while(d <= ultimo || d.getDay()!==1){
-      if(d > ultimo && d.getDay()===1) break;
-      if(d.getDay()===1) h += '<tr>';
-      const dentro = d.getMonth()===mm-1, x = infoDiaProg(datos, d), hoy = isoLocal(d)===hoyIso;
-      h += '<td class="'+(dentro?'':'g')+(hoy?' h':'')+'"><div class="n">'+d.getDate()+(hoy?' · hoy':'')+(!dentro&&d.getDate()===1?' '+MESES_ES[d.getMonth()].slice(0,3):'')+'</div>'+
-        (dentro && x.actividades.length ? x.actividades.map(t=>'<div class="t">'+escHtml(t)+'</div>').join('')+(x.responsable?'<div class="p">'+escHtml(x.responsable)+'</div>':'<div class="p p0">sin asignar</div>') : '')+'</td>';
-      if(d.getDay()===0) h += '</tr>';
-      d = sumarDiasD(d,1);
-    }
-    h += '</tbody></table></div>';
-    const notas = datos.meses[k] && String(datos.meses[k].notas||'').trim();
-    if(notas) h += '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(notas)+'</div>';
-    $('#progMes').innerHTML = h;
-    const a = $('#progMes [data-m="ant"]'), s = $('#progMes [data-m="sig"]');
-    if(a) a.onclick = ()=>{ if(i>0){ k = claves[i-1]; pintar(); } };
-    if(s) s.onclick = ()=>{ if(i<claves.length-1){ k = claves[i+1]; pintar(); } };
-  }
-  pintar();
 }
 
 /* ---------- Programación: carga mensual (solo administradores) ---------- */
