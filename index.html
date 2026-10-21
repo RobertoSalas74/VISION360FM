@@ -1355,6 +1355,10 @@ function renderPanelProgramacion(cont, datos, opts){
   panel.setAttribute('aria-label','Programación de rutinas. Con el panel activo, las flechas izquierda y derecha cambian de día, y arriba y abajo cambian de semana.');
   cont.appendChild(panel);
   const TXT_OFF = 'Haz clic aquí y usa ← → para el día y ↑ ↓ para la semana (dentro del mes)', TXT_ON = '← → cambian de día · ↑ ↓ de semana · sin salir del mes';
+  const TXT_ON_MES = '← → ↑ ↓ mover · Re Pág / Av Pág cambian de mes · Esc vuelve a la semana';
+  const txtOn = ()=> mesAbierto ? TXT_ON_MES : TXT_ON;
+  function claveVista(){ return (kMes && datos.meses[kMes]) ? kMes : (datos.meses[claveMesDe(sel)] ? claveMesDe(sel) : claves[claves.length-1]); }
+  function centrar(sel_){ const m = panel.querySelector(sel_); if(m && m.scrollIntoView) m.scrollIntoView({ behavior:'smooth', block:'center' }); }
   function pintar(subir){
     pintando = true;
     const claveSel = claveMesDe(sel);
@@ -1382,7 +1386,7 @@ function renderPanelProgramacion(cont, datos, opts){
     h += '</div>';
     let kVer = null;
     if(mesAbierto){
-      kVer = (kMes && datos.meses[kMes]) ? kMes : (datos.meses[claveSel] ? claveSel : claves[claves.length-1]);
+      kVer = claveVista();
       const i = claves.indexOf(kVer);
       const notasM = datos.meses[kVer] && String(datos.meses[kVer].notas||'').trim();
       h += '<div class="prog-mes"><div class="prog-mh"><div class="prog-mt2">'+escHtml(capitalizar(nombreMesClave(kVer)))+' · mes completo</div>'+
@@ -1392,12 +1396,12 @@ function renderPanelProgramacion(cont, datos, opts){
         (notasM ? '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(notasM)+'</div>' : '')+'</div>';
     }
     if(!(mesAbierto && kVer && String(datos.meses[kVer].notas||'').trim()) && mesSel && String(mesSel.notas||'').trim()) h += '<div class="prog-notas"><b>Notas del mes:</b> '+escHtml(mesSel.notas)+'</div>';
-    h += '<div class="prog-hint">'+(activo?TXT_ON:TXT_OFF)+'</div>';
+    h += '<div class="prog-hint">'+(activo?txtOn():TXT_OFF)+'</div>';
     panel.innerHTML = h;
     panel.querySelector('[data-a="ant"]').onclick = ()=>{ semana = sumarDiasD(semana,-7); sel = sumarDiasD(sel,-7); aviso = ''; kMes = null; pintar(); };
     panel.querySelector('[data-a="sig"]').onclick = ()=>{ semana = sumarDiasD(semana,7); sel = sumarDiasD(sel,7); aviso = ''; kMes = null; pintar(); };
     const bm = panel.querySelector('[data-a="mes"]');
-    if(bm) bm.onclick = ()=>{ mesAbierto = !mesAbierto; kMes = null; pintar(); };
+    if(bm) bm.onclick = ()=>{ mesAbierto = !mesAbierto; kMes = null; if(mesAbierto) activo = true; pintar(); if(mesAbierto) centrar('.prog-mes'); };
     panel.querySelectorAll('.prog-d').forEach(b=>{ b.onclick = ()=>{ sel = fechaDeIso(b.dataset.iso); kMes = null; pintar(); }; });
     if(mesAbierto){
       const bA = panel.querySelector('[data-m="ant"]'), bS = panel.querySelector('[data-m="sig"]');
@@ -1424,7 +1428,7 @@ function renderPanelProgramacion(cont, datos, opts){
   function poner(v){
     activo = v;
     const hh = panel.querySelector('.prog-hint');
-    if(hh) hh.textContent = v ? TXT_ON : TXT_OFF;
+    if(hh) hh.textContent = v ? txtOn() : TXT_OFF;
   }
   panel.addEventListener('focusin', ()=>{ if(!pintando) poner(true); });
   panel.addEventListener('focusout', (e)=>{
@@ -1438,6 +1442,17 @@ function renderPanelProgramacion(cont, datos, opts){
   });
   panel.addEventListener('keydown', (e)=>{
     if(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if(e.key==='Escape' && mesAbierto){
+      e.preventDefault(); mesAbierto = false; kMes = null; activo = true; pintar(); centrar('.prog-hoy'); return;
+    }
+    if((e.key==='PageUp' || e.key==='PageDown') && mesAbierto){
+      e.preventDefault();
+      const i = claves.indexOf(claveVista()) + (e.key==='PageDown' ? 1 : -1);
+      if(i<0 || i>=claves.length) return;
+      const [yy, mm] = claves[i].split('-').map(Number);
+      sel = new Date(yy, mm-1, Math.min(sel.getDate(), new Date(yy, mm, 0).getDate()));
+      semana = lunesDeD(sel); kMes = null; aviso = ''; activo = true; pintar(); centrar('.prog-mes'); return;
+    }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].indexOf(e.key)===-1) return;
     e.preventDefault();
     const paso = (e.key==='ArrowLeft' || e.key==='ArrowRight') ? 1 : 7;
