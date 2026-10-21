@@ -1354,7 +1354,7 @@ function renderPanelProgramacion(cont, datos, opts){
   panel.tabIndex = 0;
   panel.setAttribute('aria-label','Programación de rutinas. Con el panel activo, las flechas izquierda y derecha cambian de día, y arriba y abajo cambian de semana.');
   cont.appendChild(panel);
-  const TXT_OFF = 'Haz clic aquí y usa ← → para el día y ↑ ↓ para la semana', TXT_ON = '← → cambian de día · ↑ ↓ cambian de semana';
+  const TXT_OFF = 'Haz clic aquí y usa ← → para el día y ↑ ↓ para la semana (dentro del mes)', TXT_ON = '← → cambian de día · ↑ ↓ de semana · sin salir del mes';
   function pintar(subir){
     pintando = true;
     const claveSel = claveMesDe(sel);
@@ -1441,7 +1441,9 @@ function renderPanelProgramacion(cont, datos, opts){
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].indexOf(e.key)===-1) return;
     e.preventDefault();
     const paso = (e.key==='ArrowLeft' || e.key==='ArrowRight') ? 1 : 7;
-    sel = sumarDiasD(sel, (e.key==='ArrowRight' || e.key==='ArrowDown') ? paso : -paso);
+    const nuevo = sumarDiasD(sel, (e.key==='ArrowRight' || e.key==='ArrowDown') ? paso : -paso);
+    if(claveMesDe(nuevo)!==claveMesDe(sel)) return;   /* el cuadro no sale del mes: se detiene en el primer y último día */
+    sel = nuevo;
     semana = lunesDeD(sel); kMes = null; aviso = ''; activo = true;
     pintar();
   });
