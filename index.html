@@ -1349,6 +1349,7 @@ function renderPanelProgramacion(cont, datos, opts){
       aviso = 'Programación de '+MESES_ES[Number(kUso.slice(5))-1]+'. Aún no se ha cargado la de '+MESES_ES[ref.getMonth()]+'.';
     }
   }
+  const selInicial = sel, avisoInicial = aviso;
   let semana = lunesDeD(sel), mesAbierto = false, kMes = null, activo = false, pintando = false;
   const panel = el('div','prog-panel');
   panel.tabIndex = 0;
@@ -1443,7 +1444,9 @@ function renderPanelProgramacion(cont, datos, opts){
   panel.addEventListener('keydown', (e)=>{
     if(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if(e.key==='Escape' && mesAbierto){
-      e.preventDefault(); mesAbierto = false; kMes = null; activo = true; pintar(); centrar('.prog-hoy'); return;
+      e.preventDefault(); mesAbierto = false; kMes = null; activo = true;
+      sel = selInicial; semana = lunesDeD(sel); aviso = avisoInicial;   /* Esc vuelve al día actual */
+      pintar(); centrar('.prog-hoy'); return;
     }
     if((e.key==='PageUp' || e.key==='PageDown') && mesAbierto){
       e.preventDefault();
