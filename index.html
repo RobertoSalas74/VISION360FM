@@ -74,6 +74,7 @@
   .prog-v{font-size:11px;color:#AEB2C4;}
   .prog-r{border-top:1px solid #E6E8F0;padding-top:7px;margin-top:3px;font-size:11.5px;font-weight:600;color:var(--marca-morado);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .prog-r0{color:#AEB2C4;font-weight:400;}
+  .dias-pill.gris{background:#ECEBF1;color:#5B6072;}
   .prog-panel:focus{outline:none;}
   .prog-panel:focus-visible{outline:2px solid #CDBDEB;outline-offset:3px;}
   .prog-hint{font-size:11.5px;color:#8A8FA3;margin-top:10px;text-align:right;}
@@ -1027,9 +1028,10 @@ function impactoHistorico(){
    ENTREGA 2 — ACTUALIZAR EL HISTORIAL CON LAS REGLAS VIGENTES
    (la app calcula el plan; la base de datos lo ejecuta con sus propias comprobaciones)
 ========================================================= */
-function evaluarRonda(cfg, d){
+function evaluarRonda(cfg, d, off){
   const np = [], pe = {};
   (cfg.fields||[]).forEach(f=>{
+    if(off && !f.persistente) return;
     const v = d[f.key];
     if(v==null || v==='') return;
     const ev = evaluarCampo(f, v);
@@ -1041,7 +1043,7 @@ function evaluarRonda(cfg, d){
       pe[f.key] = { alerta, ident: f.key==='presenta_alarma' ? mostrar.trim().toLowerCase() : 'x' };
     } else np.push(alerta);
   });
-  (cfg.reglas||[]).forEach(rg=>{
+  if(!off) (cfg.reglas||[]).forEach(rg=>{
     const r = rg.eval(d);
     if(r && r.fuera) np.push({ key:rg.key, label:rg.label, valor:r.valor, riesgo:rg.riesgo||null, severidad:rg.severidad||'Alta', descripcion:null });
   });
@@ -1064,7 +1066,7 @@ function calcularPlanHistorial(){
   FAMILIAS_VISIBLES.forEach(fam=>{
     if(!FAMILY_FIELDS[fam]) return;
     const cfg = familyFieldConfig(fam);
-    const r = resumen[fam] = { creadas:0, eliminadas:0, actualizadas:0, aAlarma:0, aOk:0 };
+    const r = resumen[fam] = { creadas:0, eliminadas:0, actualizadas:0, aAlarma:0, aOk:0, aFuera:0 };
     const tags = new Set(equiposCriticos().filter(a=>a.familia===fam).map(a=>a.tag));
     const npKeys = new Set((cfg.fields||[]).filter(f=>!f.persistente).map(f=>f.key).concat((cfg.reglas||[]).map(x=>x.key)));
     const peKeys = (cfg.fields||[]).filter(f=>f.persistente).map(f=>f.key);
@@ -1081,14 +1083,17 @@ function calcularPlanHistorial(){
     ST.inspecciones.forEach(i=>{ if(tags.has(i.tag) && i.fecha_inspeccion_d) (porTag[i.tag] = porTag[i.tag] || []).push(i); });
     Object.keys(porTag).forEach(tag=>{
       const evals = porTag[tag].slice().sort((a,b)=>a.fecha_inspeccion_d-b.fecha_inspeccion_d || String(a.created_at||'').localeCompare(String(b.created_at||'')))
-        .map(i=>({ i, d:i.datos_adicionales||{}, ev:evaluarRonda(cfg, i.datos_adicionales||{}) }));
+        .map(i=>({ i, d:i.datos_adicionales||{}, ev:evaluarRonda(cfg, i.datos_adicionales||{}, lecturasOffDe(i)) }));
       // resultado OK o ALARMA de cada ronda
       evals.forEach(x=>{
         const hay = x.ev.np.length>0 || Object.keys(x.ev.pe).length>0;
-        const act = esResultadoOk(x.i.resultado_check);
-        if(act===null) return;
-        if(act===true && hay){ resultados.push({ id:x.i.id, resultado:'ALARMA' }); r.aAlarma++; }
-        else if(act===false && !hay){ resultados.push({ id:x.i.id, resultado:'OK' }); r.aOk++; }
+        const fuera = ESTADOS_FUERA.indexOf(x.i.estado_operativo)!==-1;
+        const nuevo = fuera ? 'FUERA DE SERVICIO' : (hay ? 'ALARMA' : 'OK');
+        const okAct = esResultadoOk(x.i.resultado_check);
+        const act = esFueraDeServicio(x.i.resultado_check) ? 'FUERA DE SERVICIO' : (okAct===true ? 'OK' : (okAct===false ? 'ALARMA' : null));
+        if(act===null || act===nuevo) return;
+        resultados.push({ id:x.i.id, resultado:nuevo });
+        if(nuevo==='ALARMA') r.aAlarma++; else if(nuevo==='OK') r.aOk++; else r.aFuera++;
       });
       // parámetros que se miden en cada ronda: una alerta por ronda
       evals.forEach(x=>{
@@ -1154,14 +1159,14 @@ async function abrirActualizarHistorial(){
   const hay = e.creadas+e.eliminadas+e.actualizadas+e.rondas>0;
   const filas = Object.keys(plan.resumen).map(f=>{
     const x = plan.resumen[f];
-    return '<tr><td>'+escHtml(f)+'</td><td>'+x.creadas+'</td><td>'+x.eliminadas+'</td><td>'+x.actualizadas+'</td><td>'+x.aAlarma+'</td><td>'+x.aOk+'</td></tr>';
+    return '<tr><td>'+escHtml(f)+'</td><td>'+x.creadas+'</td><td>'+x.eliminadas+'</td><td>'+x.actualizadas+'</td><td>'+x.aAlarma+'</td><td>'+x.aOk+'</td><td>'+x.aFuera+'</td></tr>';
   }).join('');
   openModal(`
     <div class="modal-head"><h3>Actualizar historial</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <div style="font-size:14px">
       ${nCambiosBorrador()>0 ? '<div class="form-msg err">Hay '+nCambiosBorrador()+' cambios sin aplicar. Esta actualización usa solo lo que rige hoy; aplica primero tus cambios si quieres incluirlos.</div>' : ''}
       <p style="margin:0 0 8px">Se compara cada ronda registrada con las reglas que rigen hoy. <b>Todavía no se ha modificado nada.</b></p>
-      <table class="obs-table"><thead><tr><th>Familia</th><th>Alertas que se crean</th><th>Alertas que se eliminan</th><th>Alertas que cambian</th><th>Rondas a ALARMA</th><th>Rondas a OK</th></tr></thead><tbody>${filas}</tbody></table>
+      <table class="obs-table"><thead><tr><th>Familia</th><th>Alertas que se crean</th><th>Alertas que se eliminan</th><th>Alertas que cambian</th><th>Rondas a ALARMA</th><th>Rondas a OK</th><th>Rondas a FUERA DE SERVICIO</th></tr></thead><tbody>${filas}</tbody></table>
       ${hay ? `<p class="phint" style="margin-top:10px"><b>Total:</b> ${e.creadas} creadas, ${e.eliminadas} eliminadas, ${e.actualizadas} actualizadas y ${e.rondas} rondas con resultado nuevo.</p>
       <ul class="plista" style="margin-top:8px">
         <li>Las alertas <b>cerradas</b> nunca se tocan, con su medida correctiva.</li>
@@ -3135,7 +3140,7 @@ function renderEquipo(app, tag){
       const horaTxt = i.created_at ? new Date(i.created_at).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}) : '—';
       const tr = el('tr','rowlink');
       tr.innerHTML = `<td>${fmtDate(isoDateInput(i.fecha_inspeccion_d))}</td><td>${horaTxt}</td><td>${i.estado_operativo||'—'}</td><td>${i.modo_funcionamiento||'—'}</td>
-        <td>${i.pct_operatividad!=null?fmtPct(i.pct_operatividad):'—'}</td><td><span class="dias-pill ${rOk===false?'bad':(rOk===true?'good':'warn')}">${rOk===false?'ALERTA':(rOk===true?'OK':'Sin dato')}</span></td>`;
+        <td>${i.pct_operatividad!=null?fmtPct(i.pct_operatividad):'—'}</td><td><span class="dias-pill ${esFueraDeServicio(i.resultado_check)?'gris':(rOk===false?'bad':(rOk===true?'good':'warn'))}">${esFueraDeServicio(i.resultado_check)?'FUERA DE SERVICIO':(rOk===false?'ALERTA':(rOk===true?'OK':'Sin dato'))}</span></td>`;
 
       const trDetalle = el('tr');
       trDetalle.className = 'hidden';
@@ -3678,9 +3683,13 @@ const TECH_FIELDS_FLAT = (()=>{
   return Array.from(seen.values());
 })();
 
+const ESTADOS_FUERA = ['Inoperativo','Inhabilitado'];
+function esFueraDeServicio(s){ return String(s||'').toUpperCase().indexOf('FUERA DE SERVICIO')!==-1; }
+function lecturasOffDe(i){ return ESTADOS_FUERA.indexOf(i.estado_operativo)!==-1 || i.modo_funcionamiento==='Apagado'; }
 function esResultadoOk(s){
   const t = String(s||'').toUpperCase();
   if(!t) return null;
+  if(t.indexOf('FUERA DE SERVICIO')!==-1) return null;
   return !(t.indexOf('ALARMA')!==-1 || t.indexOf('ALERTA')!==-1 || t.indexOf('⚠')!==-1 || t.indexOf('❌')!==-1 || t.indexOf('INOPERATIVO')!==-1);
 }
 
@@ -5341,7 +5350,7 @@ function renderTecnicoForm(app, tag, valoresPrevios){
 
       ${camposEspecificos}
 
-      <div class="full"><label>Observación (opcional)</label><textarea id="tObs">${vp.observacion?String(vp.observacion).replace(/</g,'&lt;'):''}</textarea></div>
+      <div class="full"><label>Observación (obligatoria si el equipo está inoperativo o inhabilitado)</label><textarea id="tObs">${vp.observacion?String(vp.observacion).replace(/</g,'&lt;'):''}</textarea></div>
 
       <div class="form-msg hidden" id="tecnicoFormMsg"></div>
       <div class="form-actions"><button type="submit" class="btn primary">Revisar antes de guardar</button></div>
@@ -5430,6 +5439,12 @@ function renderTecnicoForm(app, tag, valoresPrevios){
     if(faltantes.length){ formError('tecnicoFormMsg','Falta completar: '+faltantes.join('; ')+'.'); return; }
     if(faltaDetalle){ formError('tecnicoFormMsg','Ingresa el '+faltaDetalle.toLowerCase()+'.'); return; }
     if(fueraDeTope){ formError('tecnicoFormMsg', fueraDeTope); return; }
+    const estSel = $('#tEstadoOp').value;
+    if(ESTADOS_FUERA.indexOf(estSel)!==-1 && !$('#tObs').value.trim()){
+      try{ marcarFaltaCampo($('#tObs')); }catch(e){}
+      formError('tecnicoFormMsg','Escribe la observación: el motivo por el que el equipo está '+estSel.toLowerCase()+' (por ejemplo, en reparación o en proceso de entrega).');
+      return;
+    }
     const valores = {
       quien,
       estadoOp: $('#tEstadoOp').value,
@@ -5477,14 +5492,23 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
   app.appendChild(avisoRonda);
   avisarRondaDelDia(tag, avisoRonda);
 
+  const fueraS = ESTADOS_FUERA.indexOf(valores.estadoOp)!==-1;
+  const lecturasOff = fueraS || valores.modo==='Apagado';
+  if(lecturasOff){
+    const nota = el('div');
+    nota.style.cssText = 'background:var(--bg-page);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text-mid)';
+    nota.textContent = fueraS ? 'El equipo está '+valores.estadoOp.toLowerCase()+': el resultado será FUERA DE SERVICIO y no se evalúan las lecturas.' : 'El equipo está apagado: no se evalúan las lecturas (temperaturas, presiones, ciclo).';
+    app.appendChild(nota);
+  }
   const alarmas = [];
   cfg.fields.forEach(f=>{
+    if(lecturasOff && !f.persistente) return;
     const r = evaluarCampo(f, valores.datosAdicionales[f.key]);
     if(r && r.fuera){
       alarmas.push({ key:f.key, label:f.labelAlerta||f.label, valor:valores.datosAdicionales[f.key], detalle:valores.detalles[f.key], detalle2:(valores.detalles2||{})[f.key], riesgo:r.riesgo, severidad:r.severidad||'Alta' });
     }
   });
-  (cfg.reglas||[]).forEach(rg=>{
+  if(!lecturasOff) (cfg.reglas||[]).forEach(rg=>{
     const r = rg.eval(valores.datosAdicionales);
     if(r && r.fuera) alarmas.push({ key:rg.key, label:rg.label, valor:r.valor, detalle:null, detalle2:null, riesgo:rg.riesgo||null, severidad:rg.severidad||'Alta' });
   });
@@ -5560,7 +5584,7 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
       fecha_inspeccion: isoDateInput(todayLocal()),
       estado_operativo: valores.estadoOp,
       modo_funcionamiento: valores.modo,
-      resultado_check: hayAlarma ? 'ALARMA' : 'OK',
+      resultado_check: fueraS ? 'FUERA DE SERVICIO' : (hayAlarma ? 'ALARMA' : 'OK'),
       observacion: valores.observacion || null,
       datos_adicionales: datosGuardar,
       registrado_por: valores.quien
