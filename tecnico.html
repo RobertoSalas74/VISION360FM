@@ -136,12 +136,17 @@
   .tend-card .pd{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:20px;background:#ECEEF5;color:#5B6072;margin-top:6px;}
   .tend .panel{border:none;border-radius:14px;box-shadow:0 2px 8px rgba(43,10,85,.08);}
   .tend .panel h3{color:var(--marca-morado);}
-  .gfRow{display:grid;grid-template-columns:minmax(110px,170px) minmax(0,1fr) 84px;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;margin-bottom:2px;cursor:pointer;}
+  .gfRow{display:grid;grid-template-columns:minmax(110px,170px) minmax(0,1fr) 84px;gap:10px;align-items:center;padding:20px 10px 8px;border-radius:10px;margin-bottom:2px;cursor:pointer;}
   .gfRow:hover{background:#F7F3FD;}
   .gfRow.sel{background:#F1EBFB;}
   .gfRow .n{font-size:14px;font-weight:600;color:var(--text-hi);}
-  .gfRow .tr{height:16px;background:#ECECF4;border-radius:8px;overflow:hidden;}
-  .gfRow .tr i{display:block;height:100%;border-radius:8px;}
+  .gfRow .tr{height:20px;background:#ECECF4;border-radius:10px;position:relative;}
+  .gfRow .bar{display:flex;height:100%;position:relative;}
+  .gfRow .bar i{display:block;height:100%;overflow:hidden;}
+  .gfRow .bar i:first-child{border-radius:10px 0 0 10px;} .gfRow .bar i:last-of-type{border-radius:0 10px 10px 0;} .gfRow .bar i:only-of-type{border-radius:10px;}
+  .gfRow .bar .sc + .sp{border-left:2px solid #fff;}
+  .gfRow .bar i em{display:block;font-style:normal;font-size:10.5px;font-weight:700;color:#fff;text-align:center;line-height:20px;white-space:nowrap;}
+  .gfRow .bar .nn{position:absolute;bottom:100%;transform:translateX(-50%);font-size:11px;font-weight:700;color:var(--text-hi);padding-bottom:1px;white-space:nowrap;}
   .gfRow .c{font-size:14px;text-align:right;}
   .gfRow .c b{font-size:16px;}
   .gfRow .c span{color:var(--text-mid);font-size:12px;}
@@ -497,7 +502,8 @@ const FAMILY_FIELDS = {
         riesgo: null },
       { key: "estado_filtro", label: "Estado de filtro", tipo: "select", persistente: true,
         opciones: ["Se mantiene limpio","Necesita limpieza","Se realizó limpieza","Filtro con desgaste","No tiene filtro"],
-        opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media" },
+        opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media", "Necesita limpieza":"Media" },
+        opcionesCorregida: ["Se realizó limpieza"],
         riesgo: null },
       { key: "estado_estructura", label: "Estado de estructura", tipo: "multiselect",
         opciones: ["Sin novedad","Oxidado","Despintado","Golpeado"], opcionesProblema: ["Oxidado","Despintado","Golpeado"],
@@ -537,7 +543,8 @@ const FAMILY_FIELDS = {
         dependeDe: "manometro_salida", dependeValor: "Sí", riesgo: null },
       { key: "estado_filtro", label: "Estado de filtro", tipo: "select", persistente: true,
         opciones: ["Se mantiene limpio","Necesita limpieza","Se realizó limpieza","Filtro con desgaste","No tiene filtro"],
-        opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media" },
+        opcionesProblema: { "No tiene filtro":"Alta", "Filtro con desgaste":"Media", "Necesita limpieza":"Media" },
+        opcionesCorregida: ["Se realizó limpieza"],
         riesgo: null },
       { key: "descarga_aire", label: "Descarga de aire", tipo: "numerico", unidad: "°C", min: 12, max: 19, alertaSoloSiSupera: true, severidad: "Alta",
         riesgo: null }
@@ -1056,7 +1063,7 @@ function nuevaAlertaDe(i, e){
   return { inspeccion_id:i.id, tag:i.tag, parametro_key:e.key, parametro_label:e.label, valor:e.valor, riesgo:e.riesgo||null, severidad:e.severidad, descripcion:e.descripcion||null, fecha_deteccion:i.created_at||null };
 }
 function calcularPlanHistorial(){
-  const creates = [], deletes = [], updates = [], resultados = [];
+  const creates = [], deletes = [], updates = [], resultados = [], closes = [];
   const resumen = {};
   const porRonda = new Map(), porTagKey = new Map();
   ST.alertas.forEach(a=>{
@@ -1069,11 +1076,15 @@ function calcularPlanHistorial(){
   FAMILIAS_VISIBLES.forEach(fam=>{
     if(!FAMILY_FIELDS[fam]) return;
     const cfg = familyFieldConfig(fam);
-    const r = resumen[fam] = { creadas:0, eliminadas:0, actualizadas:0, aAlarma:0, aOk:0, aFuera:0 };
+    const r = resumen[fam] = { creadas:0, eliminadas:0, actualizadas:0, aAlarma:0, aOk:0, aFuera:0, cerradas:0 };
     const tags = new Set(equiposCriticos().filter(a=>a.familia===fam).map(a=>a.tag));
     const npKeys = new Set((cfg.fields||[]).filter(f=>!f.persistente).map(f=>f.key).concat((cfg.reglas||[]).map(x=>x.key)));
     const peKeys = (cfg.fields||[]).filter(f=>f.persistente).map(f=>f.key);
     const manejadas = new Set();
+    const fechaDe = ronda => isoLocal(ronda.fecha_inspeccion_d);
+    const cerradaDe = (c, ronda, momento)=>Object.assign(c, { estado:'Cerrada', fecha_cierre:fechaDe(ronda), cerrado_por:'Sistema', medida_correctiva: momento ? 'Limpieza realizada en la ronda' : 'Verificada en la ronda del '+fmtDate(fechaDe(ronda)) });
+    const cerrar = (a, ronda)=>{ if(a.estado==='Cerrada') return; closes.push({ id:a.id, fecha_cierre:fechaDe(ronda), cerrado_por:'Sistema', medida_correctiva:'Verificada en la ronda del '+fmtDate(fechaDe(ronda)) }); r.cerradas++; };
+    const cierreDe = (evals, ix, key, lectura)=>{ for(let j=ix+1; j<evals.length; j++){ const y = evals[j]; if(lectura && lecturasOffDe(y.i)) continue; if(lecturaVerificada(cfg, key, y.d)) return y.i; } return null; };
     const borrar = a=>{ if(manejadas.has(a.id)) return; manejadas.add(a.id); deletes.push(a.id); r.eliminadas++; };
     const actualizar = (a, e)=>{
       manejadas.add(a.id);
@@ -1099,7 +1110,7 @@ function calcularPlanHistorial(){
         if(nuevo==='ALARMA') r.aAlarma++; else if(nuevo==='OK') r.aOk++; else r.aFuera++;
       });
       // parámetros que se miden en cada ronda: una alerta por ronda
-      evals.forEach(x=>{
+      evals.forEach((x, ix)=>{
         const esperadas = {};
         x.ev.np.forEach(e=>{ esperadas[e.key] = e; });
         npKeys.forEach(key=>{
@@ -1108,8 +1119,9 @@ function calcularPlanHistorial(){
           const e = esperadas[key];
           ex.filter(a=>a.estado==='Cerrada').forEach(a=>manejadas.add(a.id));
           if(e){
-            if(!ex.length){ creates.push(nuevaAlertaDe(x.i, e)); r.creadas++; }
-            else if(abiertas.length){ actualizar(abiertas[0], e); abiertas.slice(1).forEach(borrar); }
+            const cierre = cierreDe(evals, ix, key, true);
+            if(!ex.length){ const base = nuevaAlertaDe(x.i, e); creates.push(cierre ? cerradaDe(base, cierre, false) : base); r.creadas++; }
+            else if(abiertas.length){ actualizar(abiertas[0], e); abiertas.slice(1).forEach(borrar); if(cierre) cerrar(abiertas[0], cierre); }
           } else abiertas.forEach(borrar);
         });
       });
@@ -1117,11 +1129,18 @@ function calcularPlanHistorial(){
       peKeys.forEach(key=>{
         let ep = null;
         const episodios = [];
+        const fdef = (cfg.fields||[]).find(f=>f.key===key);
         evals.forEach(x=>{
           const v = x.d[key];
           if(v==null || v==='') return;
           const p = x.ev.pe[key];
-          if(!p){ ep = null; return; }
+          if(!p){
+            if(ep) ep.cierre = x.i;
+            else if(fdef && (fdef.opcionesCorregida||[]).indexOf(String(v))!==-1){
+              episodios.push({ ident:'c', rondas:[x], primera:{ key, label:fdef.labelAlerta||fdef.label, valor:String(v), riesgo:null, severidad:'Media', descripcion:null }, actual:null, cierre:x.i, momento:true });
+            }
+            ep = null; return;
+          }
           if(!ep || ep.ident!==p.ident){ ep = { ident:p.ident, rondas:[x], primera:p.alerta, actual:p.alerta }; episodios.push(ep); }
           else { ep.rondas.push(x); ep.actual = p.alerta; }
         });
@@ -1131,8 +1150,9 @@ function calcularPlanHistorial(){
           const ex = todas.filter(a=>ids.has(a.inspeccion_id));
           ex.filter(a=>a.estado==='Cerrada').forEach(a=>manejadas.add(a.id));
           const abiertas = ex.filter(a=>a.estado!=='Cerrada').sort((a,b)=>String(b.created_at||b.fecha_deteccion||'').localeCompare(String(a.created_at||a.fecha_deteccion||'')) || (b.id>a.id?1:-1));
-          if(!ex.length){ creates.push(nuevaAlertaDe(e.rondas[0].i, e.primera)); r.creadas++; }
-          else if(abiertas.length){ actualizar(abiertas[0], e.actual); abiertas.slice(1).forEach(borrar); }
+          const cierre = e.cierre || null;
+          if(!ex.length){ const base = nuevaAlertaDe(e.rondas[0].i, e.primera); creates.push(cierre ? cerradaDe(base, cierre, !!e.momento) : base); r.creadas++; }
+          else if(abiertas.length){ if(e.actual) actualizar(abiertas[0], e.actual); abiertas.slice(1).forEach(borrar); if(cierre) cerrar(abiertas[0], cierre); }
         });
       });
     });
@@ -1142,8 +1162,8 @@ function calcularPlanHistorial(){
       if(npKeys.has(a.parametro_key) || peKeys.indexOf(a.parametro_key)!==-1) borrar(a);
     });
   });
-  const tot = { creadas:creates.length, eliminadas:deletes.length, actualizadas:updates.length, rondas:resultados.length };
-  return { creates, deletes, updates, resultados, resumen, expected:tot };
+  const tot = { creadas:creates.length, eliminadas:deletes.length, actualizadas:updates.length, cerradas:closes.length, rondas:resultados.length };
+  return { creates, deletes, updates, closes, resultados, resumen, expected:tot };
 }
 async function prepararPlanHistorial(){
   await cargarTodo();
@@ -1159,22 +1179,23 @@ async function abrirActualizarHistorial(){
   const r = await prepararPlanHistorial();
   if(r.error){ ST.paramMsg = r.error; pintarParametros(); return; }
   const plan = r.plan, e = plan.expected;
-  const hay = e.creadas+e.eliminadas+e.actualizadas+e.rondas>0;
+  const hay = e.creadas+e.eliminadas+e.actualizadas+e.cerradas+e.rondas>0;
   const filas = Object.keys(plan.resumen).map(f=>{
     const x = plan.resumen[f];
-    return '<tr><td>'+escHtml(f)+'</td><td>'+x.creadas+'</td><td>'+x.eliminadas+'</td><td>'+x.actualizadas+'</td><td>'+x.aAlarma+'</td><td>'+x.aOk+'</td><td>'+x.aFuera+'</td></tr>';
+    return '<tr><td>'+escHtml(f)+'</td><td>'+x.creadas+'</td><td>'+x.eliminadas+'</td><td>'+x.actualizadas+'</td><td>'+x.cerradas+'</td><td>'+x.aAlarma+'</td><td>'+x.aOk+'</td><td>'+x.aFuera+'</td></tr>';
   }).join('');
   openModal(`
     <div class="modal-head"><h3>Actualizar historial</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <div style="font-size:14px">
       ${nCambiosBorrador()>0 ? '<div class="form-msg err">Hay '+nCambiosBorrador()+' cambios sin aplicar. Esta actualización usa solo lo que rige hoy; aplica primero tus cambios si quieres incluirlos.</div>' : ''}
       <p style="margin:0 0 8px">Se compara cada ronda registrada con las reglas que rigen hoy. <b>Todavía no se ha modificado nada.</b></p>
-      <table class="obs-table"><thead><tr><th>Familia</th><th>Alertas que se crean</th><th>Alertas que se eliminan</th><th>Alertas que cambian</th><th>Rondas a ALARMA</th><th>Rondas a OK</th><th>Rondas a FUERA DE SERVICIO</th></tr></thead><tbody>${filas}</tbody></table>
-      ${hay ? `<p class="phint" style="margin-top:10px"><b>Total:</b> ${e.creadas} creadas, ${e.eliminadas} eliminadas, ${e.actualizadas} actualizadas y ${e.rondas} rondas con resultado nuevo.</p>
+      <table class="obs-table"><thead><tr><th>Familia</th><th>Alertas que se crean</th><th>Alertas que se eliminan</th><th>Alertas que cambian</th><th>Alertas que se cierran</th><th>Rondas a ALARMA</th><th>Rondas a OK</th><th>Rondas a FUERA DE SERVICIO</th></tr></thead><tbody>${filas}</tbody></table>
+      ${hay ? `<p class="phint" style="margin-top:10px"><b>Total:</b> ${e.creadas} creadas, ${e.eliminadas} eliminadas, ${e.actualizadas} actualizadas${e.cerradas?', '+e.cerradas+' cerradas':''} y ${e.rondas} rondas con resultado nuevo.</p>
       <ul class="plista" style="margin-top:8px">
         <li>Las alertas <b>cerradas</b> nunca se tocan, con su medida correctiva.</li>
         <li>Las alertas <b>abiertas</b> que dejan de aplicar se eliminan, con respaldo.</li>
         <li>Las rondas que pasan a incumplir reciben la alerta nueva, abierta y con su fecha original.</li>
+        <li>Las alertas que una ronda posterior confirma como corregidas se <b>cierran</b>, con la fecha de esa ronda. "Se realizó limpieza" queda como alerta ya corregida.</li>
         <li>El mismo problema de filtro, alarma o estructura sin corregir cuenta una sola vez.</li>
         <li>Todo se hace junto: si algo no coincide con esta vista previa, se revierte completo.</li>
       </ul>
@@ -1191,7 +1212,7 @@ async function abrirActualizarHistorial(){
     if(res.error){ formError('pHistMsg', res.error.message); ok.disabled = false; return; }
     const d = res.data || {};
     await cargarTodo(); await cargarParametros(); await cargarBorrador();
-    ST.paramMsg = 'Historial actualizado: '+(d.creadas||0)+' alertas creadas, '+(d.eliminadas||0)+' eliminadas, '+(d.actualizadas||0)+' actualizadas y '+(d.rondas||0)+' rondas con resultado nuevo. Respaldo guardado (lote '+(d.lote||'—')+').';
+    ST.paramMsg = 'Historial actualizado: '+(d.creadas||0)+' alertas creadas, '+(d.eliminadas||0)+' eliminadas, '+(d.actualizadas||0)+' actualizadas'+(d.cerradas?', '+d.cerradas+' cerradas':'')+' y '+(d.rondas||0)+' rondas con resultado nuevo. Respaldo guardado (lote '+(d.lote||'—')+').';
     closeModal(); pintarParametros();
   };
 }
@@ -2626,6 +2647,14 @@ function calcularFallasSemanas(fam, lunes0, nSem){
   const fin = new Date(lunes0.getFullYear(), lunes0.getMonth(), lunes0.getDate()+nSem*7-1);
   const todas = ST.inspecciones.filter(i=>tags.has(i.tag) && i.fecha_inspeccion_d);
   const rondas = todas.filter(i=>i.fecha_inspeccion_d>=lunes0 && i.fecha_inspeccion_d<=fin);
+  const porTagTodas = {};
+  todas.forEach(i=>{ (porTagTodas[i.tag] = porTagTodas[i.tag] || []).push(i); });
+  Object.keys(porTagTodas).forEach(t=>porTagTodas[t].sort((a,b)=>a.fecha_inspeccion_d-b.fecha_inspeccion_d || String(a.created_at||'').localeCompare(String(b.created_at||''))));
+  const corrLectura = (i, key)=>{
+    const l = porTagTodas[i.tag] || [], ix = l.indexOf(i);
+    for(let j=ix+1; j<l.length; j++){ if(lecturasOffDe(l[j])) continue; if(lecturaVerificada(cfg, key, l[j].datos_adicionales||{})) return true; }
+    return false;
+  };
   const semDe = d => Math.floor(daysBetween(lunes0, d)/7);
   const rondasPorTag = {};
   const rondasSem = new Array(nSem).fill(0);
@@ -2643,6 +2672,7 @@ function calcularFallasSemanas(fam, lunes0, nSem){
   const defs = {};
   rondas.forEach(i=>{
     const d = i.datos_adicionales || {};
+    if(lecturasOffDe(i)) return;   /* fuera de servicio o apagado: las lecturas no se evalúan */
     (cfg.fields||[]).forEach(f=>{
       if(f.persistente) return;
       const v = d[f.key];
@@ -2653,13 +2683,13 @@ function calcularFallasSemanas(fam, lunes0, nSem){
       if(f.tipo==='numerico') valor = v+' '+f.unidad;
       else { const det = d[f.key+'_detalle']; valor = det ? String(det) : String(v); }
       defs[f.key] = { label:nombreFalla(f), ley:leyendaParametro(f) };
-      fallas.push(nueva(f.key, nombreFalla(f), i, valor));
+      fallas.push(nueva(f.key, nombreFalla(f), i, valor, { corregida: corrLectura(i, f.key) }));
     });
     (cfg.reglas||[]).forEach(rg=>{
       const r = rg.eval(d);
       if(!(r && r.fuera)) return;
       defs[rg.key] = { label:rg.label, ley:rg.leyendaGrafico||{rl:'',rv:'',corta:''} };
-      fallas.push(nueva(rg.key, rg.label, i, 'dif. '+r.dif+' °C'));
+      fallas.push(nueva(rg.key, rg.label, i, 'dif. '+r.dif+' °C', { corregida: corrLectura(i, rg.key) }));
     });
   });
   // estados que persisten (filtro, alarma, estructura): el mismo problema sin corregir se cuenta una sola vez
@@ -2674,7 +2704,15 @@ function calcularFallasSemanas(fam, lunes0, nSem){
         const v = d[f.key];
         if(v==null || v==='') return;
         const ev = evaluarCampo(f, v);
-        if(!(ev && ev.fuera)){ ep = null; return; }
+        if(!(ev && ev.fuera)){
+          if(ep){ ep.corregida = true; ep.cierre = i; }
+          else if((f.opcionesCorregida||[]).indexOf(String(v))!==-1 && i.fecha_inspeccion_d>=lunes0 && i.fecha_inspeccion_d<=fin){
+            const epc = { ultimoValor:String(v), ident:'c', corregida:true, cierre:i };
+            defs[f.key] = { label:nombreFalla(f), ley:leyendaParametro(f), unaVez:true };
+            fallas.push(nueva(f.key, nombreFalla(f), i, String(v), { ep:epc }));
+          }
+          ep = null; return;
+        }
         const mostrar = (f.key==='presenta_alarma' && d[f.key+'_detalle']) ? String(d[f.key+'_detalle']) : String(v);
         const ident = f.key==='presenta_alarma' ? mostrar.trim().toLowerCase() : 'x';
         if(!ep || ep.ident!==ident){
@@ -2698,7 +2736,8 @@ function calcularFallasSemanas(fam, lunes0, nSem){
     lista.forEach(x=>{ (porUma[x.tag] = porUma[x.tag] || {tag:x.tag, uma:x.uma, items:[]}).items.push(x); });
     const umas = Object.values(porUma).map(u=>{ u.items.sort((a,b)=>a.fecha-b.fecha); return u; })
       .sort((a,b)=>b.items.length-a.items.length || a.uma.localeCompare(b.uma,'es',{numeric:true}));
-    return { key:k, label:defs[k].label, color, ley:defs[k].ley, unaVez:!!defs[k].unaVez, total:lista.length, umas };
+    const corregidas = lista.filter(x=>x.corregida || (x.ep && x.ep.corregida)).length;
+    return { key:k, label:defs[k].label, color, ley:defs[k].ley, unaVez:!!defs[k].unaVez, total:lista.length, corregidas, umas };
   });
   const semanas = [];
   for(let w=0; w<nSem; w++){
@@ -2901,10 +2940,15 @@ function renderGraficosFallas(app, fam){
     const sumaT = D.params.reduce((a,p)=>a+p.total,0);
     const lista = el('div');
     lista.innerHTML = D.params.map(p=>{
-      const pct = Math.round(p.total/maxP*100);
+      const pct = Math.max(3, Math.round(p.total/maxP*100));
+      const cor = p.corregidas, pen = p.total - cor;
+      const wc = p.total ? cor/p.total*100 : 0, wp = 100 - wc;
+      const f2 = v => (Math.round(v*100)/100).toFixed(2);
+      const seg = (n, w, bg, cls)=> n>0 ? '<i class="'+cls+'" style="width:'+w+'%;background:'+bg+'" title="'+(cls==='sc'?'Corregidas':'Pendientes')+': '+n+' ('+f2(w)+'%)">'+(w>=14?'<em>'+f2(w)+'%</em>':'')+'</i>' : '';
       return '<div class="gfRow'+(p.key===sel?' sel':'')+'" data-k="'+p.key+'">'+
         '<div class="n">'+escHtml(p.label)+'</div>'+
-        '<div class="tr"><i style="width:'+pct+'%;background:'+p.color+'"></i></div>'+
+        '<div class="tr"><div class="bar" style="width:'+pct+'%">'+seg(cor,wc,p.color,'sc')+seg(pen,wp,'#D0021B','sp')+
+          (cor>0?'<span class="nn" style="left:'+(wc/2)+'%">'+cor+'</span>':'')+(pen>0?'<span class="nn" style="left:'+(wc+wp/2)+'%">'+pen+'</span>':'')+'</div></div>'+
         '<div class="c"><b>'+p.total+'</b> <span>'+Math.round(p.total/sumaT*100)+'%</span></div></div>';
     }).join('');
     lista.querySelectorAll('.gfRow').forEach(r=>{ r.onclick = ()=>{ sel = (sel===r.dataset.k) ? null : r.dataset.k; pintar(); }; });
@@ -2920,13 +2964,14 @@ function renderGraficosFallas(app, fam){
       const grupos = {};
       p.umas.forEach(u=>u.items.forEach(x=>{
         const val = x.ep ? x.ep.ultimoValor : x.valor;
-        const k = val+'|'+x.fecha.getTime();
-        (grupos[k] = grupos[k] || { val, fecha:x.fecha, equipos:[] }).equipos.push(u);
+        const corr = !!(x.ep && x.ep.corregida);
+        const k = val+'|'+x.fecha.getTime()+'|'+(corr?'c':'p');
+        (grupos[k] = grupos[k] || { val, fecha:x.fecha, corr, equipos:[] }).equipos.push(u);
       }));
       cuerpo = Object.values(grupos).sort((a,b)=>a.fecha-b.fecha || a.val.localeCompare(b.val,'es')).map(g=>{
         g.equipos.sort((a,b)=>a.uma.localeCompare(b.uma,'es',{numeric:true}));
         return '<div style="padding:10px 0;border-top:1px solid var(--line)">'+
-          '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px"><b style="font-size:14px">'+escHtml(g.val)+' · desde '+ddmm(g.fecha)+'</b>'+
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px"><b style="font-size:14px">'+escHtml(g.val)+' · desde '+ddmm(g.fecha)+(g.corr?' · corregida':' · pendiente')+'</b>'+
           '<span style="font-size:13px;color:var(--text-mid)">'+g.equipos.length+(g.equipos.length===1?' equipo':' equipos')+'</span></div>'+
           '<div style="display:flex;flex-wrap:wrap;gap:6px">'+g.equipos.map(u=>'<a href="javascript:void(0)" class="gfEq" data-tag="'+escHtml(u.tag)+'" style="'+pill+'">'+escHtml(u.uma)+'</a>').join('')+'</div></div>';
       }).join('');
@@ -2934,7 +2979,7 @@ function renderGraficosFallas(app, fam){
       const chipS = 'font-size:13px;padding:3px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg-page);color:var(--text-hi)';
       cuerpo = p.umas.map(u=>{
         const nr = D.rondasPorTag[u.tag]||u.items.length;
-        const chips = u.items.slice(0,4).map(x=>'<span style="'+chipS+'">'+ddmm(x.fecha)+' · '+escHtml(x.valor)+'</span>').join('')+
+        const chips = u.items.slice(0,4).map(x=>'<span style="'+chipS+'">'+ddmm(x.fecha)+' · '+escHtml(x.valor)+(x.corregida?' · corregida':'')+'</span>').join('')+
           (u.items.length>4?'<span style="font-size:13px;color:var(--text-mid);align-self:center">+'+(u.items.length-4)+' más</span>':'');
         return '<div style="padding:8px 0;border-top:1px solid var(--line)">'+
           '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><a href="javascript:void(0)" class="gfEq" data-tag="'+escHtml(u.tag)+'" style="font-size:15px;font-weight:700;color:var(--sodexo-blue);text-decoration:underline;cursor:pointer">'+escHtml(u.uma)+'</a>'+
@@ -3688,6 +3733,13 @@ const TECH_FIELDS_FLAT = (()=>{
 
 const ESTADOS_FUERA = ['Inoperativo','Inhabilitado'];
 function esFueraDeServicio(s){ return String(s||'').toUpperCase().indexOf('FUERA DE SERVICIO')!==-1; }
+function lecturaVerificada(cfg, key, d){
+  const f = (cfg.fields||[]).find(x=>x.key===key);
+  if(f){ const v = d[key]; if(v==null || v==='') return false; const ev = evaluarCampo(f, v); return !!ev && !ev.fuera; }
+  const rg = (cfg.reglas||[]).find(x=>x.key===key);
+  if(rg){ const r = rg.eval(d); return !!r && !r.fuera; }
+  return false;
+}
 function lecturasOffDe(i){ return ESTADOS_FUERA.indexOf(i.estado_operativo)!==-1 || i.modo_funcionamiento==='Apagado'; }
 function esResultadoOk(s){
   const t = String(s||'').toUpperCase();
@@ -5628,6 +5680,30 @@ function renderResumenTecnico(app, act, tag, valores, cfg){
       const {error: errAlertas} = filasNuevas.length ? await sb.from('alertas_inspeccion').insert(filasNuevas) : {error:null};
       if(errAlertas){ formError('resumenTecnicoMsg','Inspección guardada, pero no se pudieron crear las alertas: '+errAlertas.message); btnConfirmar.disabled=false; return; }
     }
+    /* una situación no se cuenta dos veces: si la ronda confirma que ya está bien, se cierra la alerta abierta;
+       si el filtro dice "Se realizó limpieza" y no había alerta abierta, queda una alerta ya corregida */
+    try{
+      const fechaR = registro.fecha_inspeccion;
+      const claves = [];
+      (cfg.fields||[]).forEach(f=>{
+        if(lecturasOff && !f.persistente) return;
+        const v = valores.datosAdicionales[f.key];
+        if(v==null || v==='') return;
+        const ev = evaluarCampo(f, v);
+        if(ev && !ev.fuera) claves.push({ key:f.key, f, v });
+      });
+      if(!lecturasOff) (cfg.reglas||[]).forEach(rg=>{ const r = rg.eval(valores.datosAdicionales); if(r && !r.fuera) claves.push({ key:rg.key }); });
+      for(const c of claves){
+        const {data:ab} = await sb.from('alertas_inspeccion').select('id').eq('tag',tag).eq('parametro_key',c.key).neq('estado','Cerrada');
+        const hayAbierta = !!(ab && ab.length);
+        if(!hayAbierta && c.f && (c.f.opcionesCorregida||[]).indexOf(String(c.v))!==-1){
+          await sb.from('alertas_inspeccion').insert({ tag, inspeccion_id:insData.id, parametro_key:c.key, parametro_label:c.f.labelAlerta||c.f.label, valor:String(c.v), riesgo:null, severidad:'Media', estado:'Cerrada', fecha_cierre:fechaR, cerrado_por:valores.quien, medida_correctiva:'Limpieza realizada en la ronda' });
+        }
+        if(hayAbierta){
+          await sb.from('alertas_inspeccion').update({ estado:'Cerrada', fecha_cierre:fechaR, cerrado_por:valores.quien, medida_correctiva:'Verificada en la ronda del '+fmtDate(fechaR) }).eq('tag',tag).eq('parametro_key',c.key).neq('estado','Cerrada');
+        }
+      }
+    }catch(e){ /* la ronda ya quedó guardada */ }
     if(cfg.actualizaEstadoActivo){
       const mapeo = ESTADO_DISPLAY.find(e=>e.label===valores.estadoOp);
       const estadoDb = mapeo ? mapeo.db : valores.estadoOp;
