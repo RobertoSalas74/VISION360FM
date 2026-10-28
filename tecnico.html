@@ -2734,8 +2734,10 @@ function calcularFallasSemanas(fam, lunes0, nSem){
 }
 
 function svgAlertasSemana(D){
-  const W=760, H=320, ml=40, mr=10, mt=34, mb=82;
+  const W=760, H=340, ml=40, mr=10, mt=34, mb=102;
   const pw=W-ml-mr, ph=H-mt-mb, n=D.semanas.length, step=pw/n, bw=Math.min(n<=4?86:54, step*0.62);
+  /* el texto de abajo se adapta al ancho de cada semana, para que nunca se monte con la vecina */
+  const fsA = step>=110 ? 14 : (step>=80 ? 12.5 : (step>=68 ? 11 : 0)), fsB = step>=110 ? 13 : 11.5, fsD = step>=60 ? 14 : (step>=44 ? 11.5 : 9), pocoTxt = step>=95 ? 'pocos datos' : 'pocos';
   const maxT = Math.max.apply(null, D.semanas.map(s=>s.total).concat([1]));
   const paso = Math.max(1, Math.ceil(Math.max(4,maxT)/3));
   const ymax = paso*Math.ceil(Math.max(4,maxT)/paso);
@@ -2767,12 +2769,13 @@ function svgAlertasSemana(D){
     }
     if(sem.equipos===0){
       s += '<text x="'+cx+'" y="'+(Y(0)-10)+'" text-anchor="middle" font-size="14" fill="#6B6F85">sin inspecciones</text>';
-      s += '<text x="'+cx+'" y="'+(H-40)+'" text-anchor="middle" font-size="14" font-weight="600" fill="#1A1D2B">'+sem.label+'</text>';
+      s += '<text x="'+cx+'" y="'+(H-68)+'" text-anchor="middle" font-size="'+fsD+'" font-weight="600" fill="#1A1D2B">'+sem.label+'</text>';
     } else {
       s += '<text x="'+cx+'" y="'+(Y(sem.total)-10)+'" text-anchor="middle" font-size="22" font-weight="700" fill="#2B0A55">'+sem.total+'</text>';
-      s += '<text x="'+cx+'" y="'+(H-52)+'" text-anchor="middle" font-size="14" font-weight="600" fill="#1A1D2B">'+sem.label+'</text>';
-      s += '<text x="'+cx+'" y="'+(H-32)+'" text-anchor="middle" font-size="13" fill="#1A1D2B"><tspan font-weight="700">'+sem.conAlerta+' de '+sem.equipos+'</tspan> equipos con alerta</text>';
-      s += '<text x="'+cx+'" y="'+(H-14)+'" text-anchor="middle" font-size="12.5" fill="#6B6F85">'+Math.round(sem.conAlerta/sem.equipos*100)+'%'+(poco?' · pocos datos':'')+'</text>';
+      s += '<text x="'+cx+'" y="'+(H-68)+'" text-anchor="middle" font-size="'+fsD+'" font-weight="600" fill="#1A1D2B">'+sem.label+'</text>';
+      if(fsA) s += '<text x="'+cx+'" y="'+(H-48)+'" text-anchor="middle" font-size="'+fsA+'" font-weight="700" fill="#1A1D2B">'+sem.conAlerta+' de '+sem.equipos+'</text>';
+      s += '<text x="'+cx+'" y="'+(H-30)+'" text-anchor="middle" font-size="'+fsB+'" fill="#6B6F85">'+Math.round(sem.conAlerta/sem.equipos*100)+'%</text>';
+      if(poco) s += '<text x="'+cx+'" y="'+(H-12)+'" text-anchor="middle" font-size="'+(fsA?12:11)+'" font-style="italic" fill="#6B6F85">'+pocoTxt+'</text>';
     }
   });
   return s + '</svg>';
