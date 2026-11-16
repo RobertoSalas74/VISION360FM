@@ -347,7 +347,7 @@
   .fr-card.good{border-top-color:var(--good);} .fr-card.warn{border-top-color:var(--warn);} .fr-card.bad{border-top-color:var(--bad);} .fr-card.off{border-top-color:var(--text-low);} .fr-card.info{border-top-color:#00B0F0;}
   .fr-card.on{border-color:var(--sodexo-blue);}
   .fr-card:focus-visible{outline:3px solid #00B0F0;outline-offset:2px;}
-  .fr-nota{font-size:12px;color:var(--text-mid);margin:-6px 0 12px;}
+  .fr-nota{font-size:13px;color:var(--text-mid);margin:0 0 10px;}
   .fr-nota button{all:unset;cursor:pointer;color:var(--sodexo-blue);font-weight:600;text-decoration:underline;}
 </style>
 </head>
@@ -2464,30 +2464,6 @@ function renderPanelActividad(app, fam){
   app.appendChild(panel);
 }
 
-/* ---------------- Franja de estado por familia (vista tipo tablero) ---------------- */
-const FAMILIAS_FRANJA = ["UMA's"];
-function filtroConProblemaDe(fam, tag){
-  const cfg = familyFieldConfig(fam);
-  const f = (cfg.fields||[]).find(x=>x.key==='estado_filtro');
-  if(!f) return null;
-  const probl = Object.keys(f.opcionesProblema||{});
-  const l = ST.inspecciones.filter(i=>i.tag===tag && i.fecha_inspeccion_d && !lecturasOffDe(i) && (i.datos_adicionales||{}).estado_filtro)
-    .sort((a,b)=>(b.fecha_inspeccion_d-a.fecha_inspeccion_d) || String(b.created_at||'').localeCompare(String(a.created_at||'')));
-  if(!l.length) return null;
-  const v = l[0].datos_adicionales.estado_filtro;
-  return probl.indexOf(v)!==-1 ? v : null;
-}
-function franjaEstadoFamilia(fam){
-  const eq = equiposCriticos().filter(a=>a.familia===fam);
-  const cfg = familyFieldConfig(fam);
-  const conFiltro = !!(cfg.fields||[]).find(x=>x.key==='estado_filtro');
-  const grupos = {}; ESTADO_DISPLAY.forEach(e=>grupos[e.db]=[]);
-  eq.forEach(a=>{ (grupos[a.estado] || grupos['Operativo']).push(a); });
-  const filtros = {};
-  if(conFiltro) eq.forEach(a=>{ const v = filtroConProblemaDe(fam, a.tag); if(v) filtros[a.tag] = v; });
-  return { eq, grupos, filtros, conFiltro };
-}
-
 function renderFamily(app, fam){
   const crumb = el('div','crumb');
   const back = el('button',null,'&larr; Estatus general');
@@ -2502,32 +2478,6 @@ function renderFamily(app, fam){
   app.appendChild(head);
 
   const resumenCont = el('div');
-  let franjaSel = null;          /* 'estado:<db>' | 'filtro' | null */
-  let pintarEquipos = ()=>{};
-  const franja = FAMILIAS_FRANJA.indexOf(fam)!==-1 ? franjaEstadoFamilia(fam) : null;
-  if(franja && franja.eq.length){
-    const cardsBox = el('div','fr-cards');
-    cardsBox.setAttribute('role','group'); cardsBox.setAttribute('aria-label','Estado de los equipos de '+fam);
-    const nota = el('div','fr-nota'); nota.style.display='none';
-    const ORDEN_FR = ['Operativo','Parcial','Fuera de servicio','De baja'];
-    const defs = ORDEN_FR.map(db=>ESTADO_DISPLAY.find(e=>e.db===db)).map(e=>({k:'estado:'+e.db, n:franja.grupos[e.db].length, l:e.label,
-      c:{'Operativo':'good','Fuera de servicio':'bad','De baja':'off','Parcial':'warn'}[e.db]}));
-    if(franja.conFiltro) defs.push({k:'filtro', n:Object.keys(franja.filtros).length, l:'Con filtro con problema', c:'info'});
-    const botones = [];
-    const refrescar = ()=>{
-      botones.forEach(({b,d})=>{ b.classList.toggle('on', franjaSel===d.k); b.setAttribute('aria-pressed', franjaSel===d.k?'true':'false'); });
-      pintarEquipos();
-    };
-    defs.forEach(d=>{
-      const b = el('button','fr-card '+d.c,'<span class="v">'+d.n+'</span><span class="l">'+d.l+'</span>');
-      b.type='button';
-      b.onclick = ()=>{ franjaSel = (franjaSel===d.k ? null : d.k); refrescar(); };
-      botones.push({b,d}); cardsBox.appendChild(b);
-    });
-    resumenCont.appendChild(cardsBox);
-    resumenCont.appendChild(nota);
-    franja._nota = nota; franja._defs = defs; franja._quitar = ()=>{ franjaSel=null; refrescar(); };
-  }
   renderPanelUnificado(resumenCont, fam);
 
   const colorVar = cls==='good'?'--good':(cls==='warn'?'--warn':'--bad');
@@ -2572,35 +2522,15 @@ function renderFamily(app, fam){
   eqPanel.innerHTML = '<h3>Equipos de la familia</h3>';
   const eqGrid = el('div','fam-grid');
   const eqList = equiposCriticos().filter(a=>a.familia===fam).sort((a,b)=>displayName(a).localeCompare(displayName(b),'es',{numeric:true}));
-  pintarEquipos = ()=>{
-    eqGrid.innerHTML = '';
-    const pasa = a=>{
-      if(!franjaSel) return true;
-      if(franjaSel==='filtro') return !!(franja && franja.filtros[a.tag]);
-      return franjaSel==='estado:'+(franja.grupos[a.estado] ? a.estado : 'Operativo');
-    };
-    const lista = eqList.filter(pasa);
-    lista.forEach(a=>{
-      const st = equipoStats(a.tag);
-      const scls = a.estado==='Operativo' ? 'good' : (a.estado==='Parcial' ? 'warn' : 'bad');
-      const chip = el('div','kpi-card clickable '+scls);
-      chip.style.borderLeftWidth='6px';
-      const fl = franja && franja.filtros[a.tag] ? ' · Filtro: '+franja.filtros[a.tag] : '';
-      chip.innerHTML = `<div class="fam-name">${a.tag}</div><div class="pct" style="font-size:21px">${displayName(a)}</div><div class="meta">${a.estado} · ${st.total} observaciones históricas${fl}</div>`;
-      chip.onclick = ()=>go('equipo',{tag:a.tag});
-      eqGrid.appendChild(chip);
-    });
-    if(franja && franja._nota){
-      const n = franja._nota;
-      if(franjaSel){
-        const d = franja._defs.find(x=>x.k===franjaSel);
-        n.innerHTML = 'Mostrando '+lista.length+' de '+eqList.length+' equipos: <strong>'+d.l+'</strong> · <button type="button">Quitar filtro</button>';
-        n.querySelector('button').onclick = franja._quitar;
-        n.style.display='';
-      } else { n.style.display='none'; }
-    }
-  };
-  pintarEquipos();
+  eqList.forEach(a=>{
+    const st = equipoStats(a.tag);
+    const scls = a.estado==='Operativo' ? 'good' : (a.estado==='Parcial' ? 'warn' : 'bad');
+    const chip = el('div','kpi-card clickable '+scls);
+    chip.style.borderLeftWidth='6px';
+    chip.innerHTML = `<div class="fam-name">${a.tag}</div><div class="pct" style="font-size:21px">${displayName(a)}</div><div class="meta">${a.estado} · ${st.total} observaciones históricas</div>`;
+    chip.onclick = ()=>go('equipo',{tag:a.tag});
+    eqGrid.appendChild(chip);
+  });
   eqPanel.appendChild(eqGrid);
   resumenCont.appendChild(eqPanel);
 
@@ -3079,6 +3009,76 @@ function renderGraficosFallas(app, fam){
   pintar();
 }
 
+/* ---------------- Franja de estado por familia (vista tipo tablero) ---------------- */
+const FAMILIAS_FRANJA = ["UMA's"];
+function filtroConProblemaDe(fam, tag){
+  const cfg = familyFieldConfig(fam);
+  const f = (cfg.fields||[]).find(x=>x.key==='estado_filtro');
+  if(!f) return null;
+  const probl = Object.keys(f.opcionesProblema||{});
+  const l = ST.inspecciones.filter(i=>i.tag===tag && i.fecha_inspeccion_d && !lecturasOffDe(i) && (i.datos_adicionales||{}).estado_filtro)
+    .sort((a,b)=>(b.fecha_inspeccion_d-a.fecha_inspeccion_d) || String(b.created_at||'').localeCompare(String(a.created_at||'')));
+  if(!l.length) return null;
+  const v = l[0].datos_adicionales.estado_filtro;
+  return probl.indexOf(v)!==-1 ? v : null;
+}
+function franjaEstadoFamilia(fam){
+  const eq = equiposCriticos().filter(a=>a.familia===fam);
+  const cfg = familyFieldConfig(fam);
+  const conFiltro = !!(cfg.fields||[]).find(x=>x.key==='estado_filtro');
+  const grupos = {}; ESTADO_DISPLAY.forEach(e=>grupos[e.db]=[]);
+  eq.forEach(a=>{ (grupos[a.estado] || grupos['Operativo']).push(a); });
+  const filtros = {};
+  if(conFiltro) eq.forEach(a=>{ const v = filtroConProblemaDe(fam, a.tag); if(v) filtros[a.tag] = v; });
+  return { eq, grupos, filtros, conFiltro };
+}
+function renderFranjaFamilia(cont, fam){
+  const franja = franjaEstadoFamilia(fam);
+  if(!franja.eq.length) return;
+  let sel = null;
+  const ORDEN_TARJETAS = ['Operativo','Parcial','Fuera de servicio','De baja'];
+  const COLOR = {'Operativo':'good','Parcial':'warn','Fuera de servicio':'bad','De baja':'off'};
+  const defs = ORDEN_TARJETAS.map(db=>ESTADO_DISPLAY.find(e=>e.db===db)).map(e=>({k:'estado:'+e.db, n:franja.grupos[e.db].length, l:e.label, c:COLOR[e.db]}));
+  if(franja.conFiltro) defs.push({k:'filtro', n:Object.keys(franja.filtros).length, l:'Con filtro con problema', c:'info'});
+  const cards = el('div','fr-cards');
+  cards.setAttribute('role','group'); cards.setAttribute('aria-label','Estado de los equipos de '+fam);
+  const res = el('div','panel'); res.style.display='none';
+  const botones = [];
+  const pintar = ()=>{
+    botones.forEach(({b,d})=>{ b.classList.toggle('on', sel===d.k); b.setAttribute('aria-pressed', sel===d.k?'true':'false'); });
+    if(!sel){ res.style.display='none'; res.innerHTML=''; return; }
+    const d = defs.find(x=>x.k===sel);
+    const lista = franja.eq.filter(a=> sel==='filtro' ? !!franja.filtros[a.tag] : sel==='estado:'+(franja.grupos[a.estado] ? a.estado : 'Operativo'))
+      .sort((a,b)=>displayName(a).localeCompare(displayName(b),'es',{numeric:true}));
+    res.innerHTML = '';
+    const nota = el('div','fr-nota','Mostrando '+lista.length+' de '+franja.eq.length+' equipos: <strong>'+d.l+'</strong> · <button type="button">Quitar filtro</button>');
+    nota.querySelector('button').onclick = ()=>{ sel=null; pintar(); };
+    res.appendChild(nota);
+    if(!lista.length){ res.appendChild(el('div','empty-msg','Ningún equipo en este grupo.')); }
+    const grid = el('div','fam-grid');
+    lista.forEach(a=>{
+      const st = equipoStats(a.tag);
+      const scls = a.estado==='Operativo' ? 'good' : (a.estado==='Parcial' ? 'warn' : 'bad');
+      const chip = el('div','kpi-card clickable '+scls);
+      chip.style.borderLeftWidth='6px';
+      const fl = franja.filtros[a.tag] ? ' · Filtro: '+franja.filtros[a.tag] : '';
+      chip.innerHTML = `<div class="fam-name">${a.tag}</div><div class="pct" style="font-size:21px">${displayName(a)}</div><div class="meta">${a.area||'Sin área'} · ${a.estado}${fl}</div>`;
+      chip.onclick = ()=>go('equipo',{tag:a.tag});
+      grid.appendChild(chip);
+    });
+    res.appendChild(grid);
+    res.style.display='';
+  };
+  defs.forEach(d=>{
+    const b = el('button','fr-card '+d.c,'<span class="v">'+d.n+'</span><span class="l">'+d.l+'</span>');
+    b.type='button';
+    b.onclick = ()=>{ sel = (sel===d.k ? null : d.k); pintar(); };
+    botones.push({b,d}); cards.appendChild(b);
+  });
+  cont.appendChild(cards);
+  cont.appendChild(res);
+}
+
 function renderFamiliaAreas(app, familia){
   const eq0 = equiposCriticos().filter(a=>a.familia===familia);
   const grupos0 = {};
@@ -3121,7 +3121,7 @@ function renderFamiliaAreas(app, familia){
   app.appendChild(head);
 
   const pest = [
-    { id:'resumen', label:'Resumen', render:c=>renderPanelUnificado(c, familia) },
+    { id:'resumen', label:'Resumen', render:c=>{ if(FAMILIAS_FRANJA.indexOf(familia)!==-1) renderFranjaFamilia(c, familia); renderPanelUnificado(c, familia); } },
     { id:'actividad', label:'Actividad', render:c=>renderPanelActividad(c, familia) }
   ];
   if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) pest.push({ id:'tendencias', label:'Tendencias', render:c=>renderGraficosFallas(c, familia) });
