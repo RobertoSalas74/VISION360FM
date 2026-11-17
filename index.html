@@ -3384,9 +3384,9 @@ function showObsModal(idObs){
     ${o.ejecutado_por?`<div class="field-row"><div class="k">Ejecutada por</div><div class="v">${escHtml(o.ejecutado_por)}${o.fecha_ejecucion?' · '+fmtDate(o.fecha_ejecucion):''}</div></div>`:''}
     ${o.cerrado_por?`<div class="field-row"><div class="k">Cerrada por</div><div class="v">${escHtml(o.cerrado_por)}</div></div>`:''}
     <div class="field-row"><div class="k">${o.estado==='Abierta'?'Días pendientes':'Días que tomó resolver'}</div><div class="v">${dias} días</div></div>
-    <div class="field-row"><div class="k">Gasto asociado</div><div class="v">${fmtMoney(o.gasto_asociado)}</div></div>
-    <div class="field-row"><div class="k">Responsable</div><div class="v">${o.responsable||'—'}</div></div>
-    <div class="field-row"><div class="k">Origen</div><div class="v">${o.origen||'—'}</div></div>
+    ${Number(o.gasto_asociado)>0?`<div class="field-row"><div class="k">Gasto asociado</div><div class="v">${fmtMoney(o.gasto_asociado)}</div></div>`:''}
+    ${o.responsable?`<div class="field-row"><div class="k">Responsable</div><div class="v">${escHtml(o.responsable)}</div></div>`:''}
+    ${o.origen?`<div class="field-row"><div class="k">Origen</div><div class="v">${escHtml(o.origen)}</div></div>`:''}
   `);
 }
 
