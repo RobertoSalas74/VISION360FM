@@ -3244,7 +3244,7 @@ function renderEquipo(app, tag){
     <div class="stat-box"><div class="v">${s.tiempoProm!=null? s.tiempoProm+' d':'—'}</div><div class="l">Tiempo promedio de resolución</div></div>
     <div class="stat-box"><div class="v">${s.diasDesdeAlta!=null? s.diasDesdeAlta+' d':'—'}</div><div class="l">Días desde la fecha de alta</div></div>
   `;
-  if(s.total>0) app.appendChild(top);
+  if(s.total>0 && act.familia!=="UMA's") app.appendChild(top);
 
   const cfg = familyFieldConfig(act.familia);
 
