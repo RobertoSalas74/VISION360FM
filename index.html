@@ -658,6 +658,8 @@ function fmtDate(s){ if(!s) return '—'; const d=new Date(s+'T00:00:00'); retur
 function parseDate(s){ return s? new Date(s+'T00:00:00') : null; }
 function monthLabel(m){ const N=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']; return N[m]; }
 function displayName(act){ return (act.nombre_corto && act.nombre_corto.trim()) ? act.nombre_corto.trim() : act.tag; }
+/* El código interno (UMA-129…) de las UMAs es solo de trazabilidad: no se muestra */
+function etiquetaVisible(tag){ const a = ST.activosByTag && ST.activosByTag.get(tag); return (a && a.familia==="UMA's") ? displayName(a) : tag; }
 
 /* =========================================================
    CARGA DE DATOS
@@ -2504,7 +2506,7 @@ function renderFamily(app, fam){
       const act = ST.activosByTag.get(o.tag);
       const tr = el('tr','rowlink');
       const dcls = o.dias>30?'bad':(o.dias>10?'warn':'good');
-      tr.innerHTML = `<td><span class="tag-mono">${o.tag}</span><br><span style="font-size:11px;color:var(--text-low)">${act?displayName(act):''}</span></td>
+      tr.innerHTML = `<td><span class="tag-mono">${etiquetaVisible(o.tag)}</span><br><span style="font-size:11px;color:var(--text-low)">${act&&etiquetaVisible(o.tag)===o.tag?displayName(act):''}</span></td>
         <td>${o.titulo||o.observacion||''}</td><td>${fmtDate(o.fecha_observacion)}</td>
         <td><span class="dias-pill ${dcls}">${o.dias} d</span></td><td>${fmtMoney(o.gasto_asociado)}</td>`;
       tr.onclick = ()=>showObsModal(o.id_obs);
@@ -2524,7 +2526,7 @@ function renderFamily(app, fam){
     const scls = a.estado==='Operativo' ? 'good' : (a.estado==='Parcial' ? 'warn' : 'bad');
     const chip = el('div','kpi-card clickable '+scls);
     chip.style.borderLeftWidth='6px';
-    chip.innerHTML = `<div class="fam-name">${a.tag}</div><div class="pct" style="font-size:21px">${displayName(a)}</div><div class="meta">${a.estado} · ${st.total} observaciones históricas</div>`;
+    chip.innerHTML = `<div class="fam-name">${etiquetaVisible(a.tag)}</div><div class="pct" style="font-size:21px">${displayName(a)}</div><div class="meta">${a.estado} · ${st.total} observaciones históricas</div>`;
     chip.onclick = ()=>go('equipo',{tag:a.tag});
     eqGrid.appendChild(chip);
   });
@@ -3201,7 +3203,7 @@ function renderEquipo(app, tag){
 
   const s = equipoStats(tag);
   const head = el('div');
-  head.innerHTML = `<h2 class="view-title">${displayName(act)}</h2><p class="view-sub">${act.tag} — ${act.descripcion||''}</p>`;
+  head.innerHTML = `<h2 class="view-title">${displayName(act)}</h2><p class="view-sub">${etiquetaVisible(act.tag)===act.tag ? act.tag+' — ' : ''}${act.descripcion||''}</p>`;
   app.appendChild(head);
 
   if(!ST.modoTecnico && (esAdmin() || esProponente())){
@@ -3373,7 +3375,7 @@ function showObsModal(idObs){
   openModal(`
     <div class="modal-head"><h3>${o.titulo}</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <div class="field-row"><div class="k">ID</div><div class="v">${o.id_obs}</div></div>
-    <div class="field-row"><div class="k">Equipo</div><div class="v">${act?displayName(act):o.tag} (${o.tag})</div></div>
+    <div class="field-row"><div class="k">Equipo</div><div class="v">${act?displayName(act):o.tag}${etiquetaVisible(o.tag)===o.tag?' ('+o.tag+')':''}</div></div>
     <div class="field-row"><div class="k">Qué se hizo / diagnóstico</div><div class="v">${o.observacion||'—'}</div></div>
     <div class="field-row"><div class="k">Fecha</div><div class="v">${fmtDate(o.fecha_observacion)}</div></div>
     <div class="field-row"><div class="k">Estado</div><div class="v">${o.estado}${o.fecha_cierre?(' — cerrada '+fmtDate(o.fecha_cierre)):''}</div></div>
@@ -3476,7 +3478,7 @@ async function nextObsId(initial){
 }
 
 function openFormNuevaObs(){
-  const tagOptions = ST.activos.map(a=>`<option value="${a.tag}">${a.tag} — ${a.descripcion||displayName(a)}</option>`).join('');
+  const tagOptions = ST.activos.map(a=>`<option value="${a.tag}">${etiquetaVisible(a.tag)} — ${a.descripcion||displayName(a)}</option>`).join('');
   openModal(`
     <div class="modal-head"><h3>Nueva observación</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <form class="form-grid" id="fObs">
@@ -3516,7 +3518,7 @@ function openFormNuevaObs(){
 function openFormCerrarObs(){
   const abiertas = ST.observaciones.filter(o=>o.estado==='Abierta');
   if(!abiertas.length){ openModal('<div class="modal-head"><h3>Cerrar observación</h3><button class="btn ghost" onclick="window.__closeModal()">✕</button></div><p style="color:var(--text-mid)">No hay observaciones abiertas.</p>'); return; }
-  const options = abiertas.map(o=>`<option value="${o.id_obs}">${o.id_obs} — ${o.tag} — ${(o.titulo||'').slice(0,40)}</option>`).join('');
+  const options = abiertas.map(o=>`<option value="${o.id_obs}">${o.id_obs} — ${etiquetaVisible(o.tag)} — ${(o.titulo||'').slice(0,40)}</option>`).join('');
   openModal(`
     <div class="modal-head"><h3>Cerrar observación</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <form class="form-grid" id="fCierre">
