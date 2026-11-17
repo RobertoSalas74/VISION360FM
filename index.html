@@ -3032,7 +3032,7 @@ function franjaEstadoFamilia(fam){
   if(conFiltro) eq.forEach(a=>{ const v = filtroConProblemaDe(fam, a.tag); if(v) filtros[a.tag] = v; });
   return { eq, grupos, filtros, conFiltro };
 }
-function renderFranjaFamilia(cont, fam){
+function renderFranjaFamilia(cont, fam, panelWrap){
   const franja = franjaEstadoFamilia(fam);
   if(!franja.eq.length) return;
   let sel = null;
@@ -3045,6 +3045,7 @@ function renderFranjaFamilia(cont, fam){
   const res = el('div','panel'); res.style.display='none';
   const botones = [];
   const pintar = ()=>{
+    if(panelWrap) panelWrap.style.display = sel ? 'none' : '';
     botones.forEach(({b,d})=>{ b.classList.toggle('on', sel===d.k); b.setAttribute('aria-pressed', sel===d.k?'true':'false'); });
     if(!sel){ res.style.display='none'; res.innerHTML=''; return; }
     const d = defs.find(x=>x.k===sel);
@@ -3132,7 +3133,7 @@ function renderFamiliaAreas(app, familia){
   app.appendChild(head);
 
   const pest = [
-    { id:'resumen', label:'Resumen', render:c=>{ if(FAMILIAS_FRANJA.indexOf(familia)!==-1) renderFranjaFamilia(c, familia); renderPanelUnificado(c, familia); } },
+    { id:'resumen', label:'Resumen', render:c=>{ const pw = el('div'); if(FAMILIAS_FRANJA.indexOf(familia)!==-1) renderFranjaFamilia(c, familia, pw); c.appendChild(pw); renderPanelUnificado(pw, familia); } },
     { id:'actividad', label:'Actividad', render:c=>renderPanelActividad(c, familia) }
   ];
   if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) pest.push({ id:'tendencias', label:'Tendencias', render:c=>renderGraficosFallas(c, familia) });
