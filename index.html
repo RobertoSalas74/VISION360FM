@@ -802,7 +802,7 @@ function render(){
   const app = $('#app');
   app.innerHTML = '';
   if(ST.view.screen==='status') renderStatus(app);
-  else if(ST.view.screen==='family') renderFamily(app, ST.view.family);
+  else if(ST.view.screen==='family') { if(FAMILIAS_FRANJA.indexOf(ST.view.family)!==-1) renderFamiliaAreas(app, ST.view.family); else renderFamily(app, ST.view.family); }
   else if(ST.view.screen==='equipo') renderEquipo(app, ST.view.tag);
   else if(ST.view.screen==='familia-areas') renderFamiliaAreas(app, ST.view.familia);
   else if(ST.view.screen==='familia-area-detail') renderFamiliaAreaDetail(app, ST.view.familia, ST.view.area);
@@ -3091,6 +3091,36 @@ function renderFranjaFamilia(cont, fam, panelWrap){
   cont.appendChild(res);
 }
 
+function renderObsFamilia(cont, fam){
+  const s = familyStats(fam);
+  if(s.obsFam.length){
+    const chartPanel = el('div','panel');
+    chartPanel.innerHTML = '<h3>Observaciones por mes — '+ST.cutoff.getFullYear()+'</h3>';
+    chartPanel.appendChild(buildChart(monthlySeries(fam)));
+    cont.appendChild(chartPanel);
+  }
+  const tablePanel = el('div','panel');
+  tablePanel.innerHTML = '<h3>Observaciones pendientes</h3>';
+  if(!s.pendientes.length){
+    tablePanel.appendChild(el('div','empty-msg','Sin observaciones pendientes en esta familia.'));
+  } else {
+    const table = el('table','obs-table');
+    table.innerHTML = '<thead><tr><th>Equipo</th><th>Observación</th><th>Fecha</th><th>Días pendientes</th></tr></thead>';
+    const tbody = el('tbody');
+    s.pendientes.forEach(o=>{
+      const act = ST.activosByTag.get(o.tag);
+      const tr = el('tr','rowlink');
+      const dcls = o.dias>30?'bad':(o.dias>10?'warn':'good');
+      tr.innerHTML = '<td>'+escHtml(act?displayName(act):o.tag)+'</td><td>'+escHtml(o.titulo||o.observacion||'')+'</td><td>'+fmtDate(o.fecha_observacion)+'</td><td><span class="dias-pill '+dcls+'">'+o.dias+' d</span></td>';
+      tr.onclick = ()=>showObsModal(o.id_obs);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tablePanel.appendChild(table);
+  }
+  cont.appendChild(tablePanel);
+}
+
 function renderFamiliaAreas(app, familia){
   const eq0 = equiposCriticos().filter(a=>a.familia===familia);
   const grupos0 = {};
@@ -3130,12 +3160,23 @@ function renderFamiliaAreas(app, familia){
 
   const head = el('div');
   head.innerHTML = `<h2 class="view-title">${familia}</h2><p class="view-sub">Agrupados por área — ${eq0.length} equipos</p>`;
+  if(FAMILIAS_FRANJA.indexOf(familia)!==-1){
+    const sF = familyStats(familia);
+    const clsF = semaforoClass(sF.disp);
+    const colF = clsF==='good'?'--good':(clsF==='warn'?'--warn':'--bad');
+    head.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap';
+    const izq = el('div'); izq.innerHTML = head.innerHTML; head.innerHTML = ''; head.appendChild(izq);
+    const der = el('div'); der.style.cssText = 'display:flex;gap:10px';
+    der.innerHTML = `<div class="stat-box" style="min-width:110px"><div class="v">${sF.total}</div><div class="l">Cantidad de equipos</div></div><div class="stat-box" style="min-width:110px"><div class="v" style="color:var(${colF})">${fmtPct(sF.disp)}</div><div class="l">Disponibilidad</div></div>`;
+    head.appendChild(der);
+  }
   app.appendChild(head);
 
   const pest = [
     { id:'resumen', label:'Resumen', render:c=>{ const pw = el('div'); if(FAMILIAS_FRANJA.indexOf(familia)!==-1) renderFranjaFamilia(c, familia, pw); c.appendChild(pw); renderPanelUnificado(pw, familia); } },
     { id:'actividad', label:'Actividad', render:c=>renderPanelActividad(c, familia) }
   ];
+  if(FAMILIAS_FRANJA.indexOf(familia)!==-1) pest.splice(1,0,{ id:'observaciones', label:'Observaciones', render:c=>renderObsFamilia(c, familia) });
   if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) pest.push({ id:'tendencias', label:'Tendencias', render:c=>renderGraficosFallas(c, familia) });
   renderPestanasFamilia(app, familia, pest);
 
