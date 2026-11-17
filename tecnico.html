@@ -813,6 +813,7 @@ function render(){
   else if(ST.view.screen==='tecnico-login') renderTecnicoLogin(app);
   else if(ST.view.screen==='tecnico-familias') renderTecnicoFamilias(app);
   else if(ST.view.screen==='tecnico-equipos') renderTecnicoEquipos(app, ST.view.familia);
+  else if(ST.view.screen==='tecnico-obs') renderTecnicoObs(app);
   else if(ST.view.screen==='tecnico-form') renderTecnicoForm(app, ST.view.tag);
   else if(ST.view.screen==='tecnico-alertas') renderTecnicoAlertas(app);
   else if(ST.view.screen==='propuestas') renderPropuestas(app);
@@ -3381,7 +3382,9 @@ function showObsModal(idObs){
     <div class="field-row"><div class="k">Equipo</div><div class="v">${act?displayName(act):o.tag}${etiquetaVisible(o.tag)===o.tag?' ('+o.tag+')':''}</div></div>
     <div class="field-row"><div class="k">Qué se hizo / diagnóstico</div><div class="v">${o.observacion||'—'}</div></div>
     <div class="field-row"><div class="k">Fecha</div><div class="v">${fmtDate(o.fecha_observacion)}</div></div>
-    <div class="field-row"><div class="k">Estado</div><div class="v">${o.estado}${o.fecha_cierre?(' — cerrada '+fmtDate(o.fecha_cierre)):''}</div></div>
+    <div class="field-row"><div class="k">Estado</div><div class="v">${o.estado}${o.fecha_cierre?(' — cerrada '+fmtDate(o.fecha_cierre)):''}${obsEjecutada(o)?' — ejecutada, pendiente de cierre':''}</div></div>
+    ${o.ejecutado_por?`<div class="field-row"><div class="k">Ejecutada por</div><div class="v">${escHtml(o.ejecutado_por)}${o.fecha_ejecucion?' · '+fmtDate(o.fecha_ejecucion):''}</div></div>`:''}
+    ${o.cerrado_por?`<div class="field-row"><div class="k">Cerrada por</div><div class="v">${escHtml(o.cerrado_por)}</div></div>`:''}
     <div class="field-row"><div class="k">${o.estado==='Abierta'?'Días pendientes':'Días que tomó resolver'}</div><div class="v">${dias} días</div></div>
     <div class="field-row"><div class="k">Gasto asociado</div><div class="v">${fmtMoney(o.gasto_asociado)}</div></div>
     <div class="field-row"><div class="k">Responsable</div><div class="v">${o.responsable||'—'}</div></div>
@@ -3439,7 +3442,10 @@ function openCaptureMenu(){
     </div>
   `);
   $('#mNuevaObs').onclick = openFormNuevaObs;
-  $('#mCerrarObs').onclick = openFormCerrarObs;
+  const bEj = el('button','btn','Marcar observación como ejecutada'); bEj.id='mEjecutarObs';
+  $('#mCerrarObs').parentNode.insertBefore(bEj, $('#mCerrarObs'));
+  bEj.onclick = ()=>openFormEjecutarObs();
+  if(puedeCerrarObs()) $('#mCerrarObs').onclick = openFormCerrarObs; else $('#mCerrarObs').style.display='none';
   if(esAdmin()){
     $('#mAltaEquipo').onclick = openFormAltaEquipo;
     $('#mImportar').onclick = openImportWizard;
@@ -3488,6 +3494,7 @@ function openFormNuevaObs(){
       <div class="full"><label>Equipo (TAG)</label><select id="obsTag">${tagOptions}</select></div>
       <div class="full"><label>Título (ej: "Fuga de glicol")</label><input id="obsTitulo" required maxlength="60"></div>
       <div class="full"><label>¿Qué se hizo / diagnóstico?</label><textarea id="obsTexto" required></textarea></div>
+      ${ST.modoTecnico?`<div class="full"><label>Reportada por</label><select id="obsQuien"><option value="">Selecciona…</option>${TECNICOS_AUTORIZADOS.map(n=>'<option>'+escHtml(n)+'</option>').join('')}</select></div>`:''}
       <div><label>Fecha</label><input type="date" id="obsFecha" value="${isoDateInput(todayLocal())}"></div>
       <div><label>Gasto asociado (S/)</label><input type="number" step="0.01" id="obsGasto" value="0"></div>
       <div class="full"><label>Origen</label>
@@ -3508,8 +3515,9 @@ function openFormNuevaObs(){
     const nuevo = {
       id_obs:idObs, tag:$('#obsTag').value, titulo:$('#obsTitulo').value.trim(), observacion:$('#obsTexto').value.trim(),
       fecha_observacion:$('#obsFecha').value, estado:'Abierta', gasto_asociado:Number($('#obsGasto').value)||0,
-      responsable: ST.session.user.email, origen: $('#obsOrigen').value
+      responsable: (ST.modoTecnico && $('#obsQuien') && $('#obsQuien').value) || ST.session.user.email, origen: $('#obsOrigen').value
     };
+    if(ST.modoTecnico && !$('#obsQuien').value){ formError('obsMsg','Selecciona quién reporta.'); return; }
     if(!nuevo.titulo || !nuevo.observacion){ formError('obsMsg','Título y descripción no pueden estar vacíos.'); return; }
     const {error} = await sb.from('observaciones').insert(nuevo);
     if(error){ formError('obsMsg','No se pudo guardar: '+error.message); return; }
@@ -3518,10 +3526,58 @@ function openFormNuevaObs(){
   };
 }
 
+function openFormEjecutarObs(idPre){
+  const pend = ST.observaciones.filter(o=>o.estado==='Abierta' && !obsEjecutada(o));
+  if(!pend.length){ openModal('<div class="modal-head"><h3>Marcar como ejecutada</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div><p style="color:var(--text-mid)">No hay observaciones pendientes de ejecutar.</p>'); return; }
+  const options = pend.map(o=>`<option value="${escHtml(o.id_obs)}"${o.id_obs===idPre?' selected':''}>${escHtml(etiquetaVisible(o.tag))} — ${escHtml((o.titulo||'').slice(0,50))}</option>`).join('');
+  openModal(`
+    <div class="modal-head"><h3>Marcar como ejecutada</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
+    <form class="form-grid" id="fEjec">
+      <div class="full"><label>Observación</label><select id="ejId">${options}</select></div>
+      <div class="full"><label>Ejecutada por</label><select id="ejQuien" required><option value="">Selecciona…</option>${TECNICOS_AUTORIZADOS.map(n=>'<option>'+escHtml(n)+'</option>').join('')}</select></div>
+      <div class="full"><label>Fecha de ejecución</label><input type="date" id="ejFecha" value="${isoDateInput(todayLocal())}"></div>
+      <div class="form-msg hidden" id="ejMsg"></div>
+      <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
+        <button type="submit" class="btn primary">Guardar</button></div>
+    </form>
+  `);
+  $('#fEjec').onsubmit = async (e)=>{
+    e.preventDefault();
+    if(!$('#ejQuien').value){ formError('ejMsg','Selecciona quién la ejecutó.'); return; }
+    const {error} = await sb.from('observaciones').update({ejecutado_por:$('#ejQuien').value, fecha_ejecucion:$('#ejFecha').value}).eq('id_obs', $('#ejId').value);
+    if(error){ formError('ejMsg','No se pudo guardar: '+error.message); return; }
+    formOk('ejMsg','Marcada como ejecutada. Queda pendiente de cierre por el supervisor.');
+    await recargarYRefrescar();
+  };
+}
+
+function renderTecnicoObs(app){
+  const crumb = el('div','crumb');
+  const back = el('button',null,'&larr; Volver'); back.onclick = ()=>go('tecnico-familias');
+  crumb.appendChild(back); app.appendChild(crumb);
+  const head = el('div');
+  head.innerHTML = '<h2 class="view-title">Observaciones</h2><p class="view-sub">Reporta una nueva o marca como ejecutada la que ya resolviste. El cierre lo hace el supervisor.</p>';
+  app.appendChild(head);
+  const bNueva = el('button','btn primary','Nueva observación'); bNueva.style.marginBottom='14px'; bNueva.onclick = openFormNuevaObs;
+  app.appendChild(bNueva);
+  const abiertas = ST.observaciones.filter(o=>o.estado==='Abierta').sort((a,b)=>displayName(ST.activosByTag.get(a.tag)||{tag:a.tag}).localeCompare(displayName(ST.activosByTag.get(b.tag)||{tag:b.tag}),'es',{numeric:true}));
+  const panel = el('div','panel');
+  if(!abiertas.length) panel.appendChild(el('div','empty-msg','No hay observaciones abiertas.'));
+  abiertas.forEach(o=>{
+    const act = ST.activosByTag.get(o.tag);
+    const row = el('div'); row.style.cssText='padding:12px 4px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px';
+    const ej = obsEjecutada(o);
+    row.innerHTML = '<div><div style="font-weight:600">'+escHtml(act?displayName(act):o.tag)+' · '+escHtml(o.titulo||'')+'</div><div style="font-size:12px;color:var(--text-low)">'+(ej?'Ejecutada por '+escHtml(o.ejecutado_por)+' · pendiente de cierre':'Pendiente')+'</div></div>';
+    if(!ej){ const b = el('button','btn','Ejecutada'); b.onclick = ()=>openFormEjecutarObs(o.id_obs); row.appendChild(b); }
+    panel.appendChild(row);
+  });
+  app.appendChild(panel);
+}
+
 function openFormCerrarObs(){
-  const abiertas = ST.observaciones.filter(o=>o.estado==='Abierta');
+  const abiertas = ST.observaciones.filter(o=>o.estado==='Abierta').sort((a,b)=>(obsEjecutada(b)?1:0)-(obsEjecutada(a)?1:0));
   if(!abiertas.length){ openModal('<div class="modal-head"><h3>Cerrar observación</h3><button class="btn ghost" onclick="window.__closeModal()">✕</button></div><p style="color:var(--text-mid)">No hay observaciones abiertas.</p>'); return; }
-  const options = abiertas.map(o=>`<option value="${o.id_obs}">${o.id_obs} — ${etiquetaVisible(o.tag)} — ${(o.titulo||'').slice(0,40)}</option>`).join('');
+  const options = abiertas.map(o=>`<option value="${o.id_obs}">${obsEjecutada(o)?'✔ ejecutada · ':''}${o.id_obs} — ${etiquetaVisible(o.tag)} — ${(o.titulo||'').slice(0,40)}${obsEjecutada(o)?' ('+o.ejecutado_por+')':''}</option>`).join('');
   openModal(`
     <div class="modal-head"><h3>Cerrar observación</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <form class="form-grid" id="fCierre">
@@ -3535,7 +3591,7 @@ function openFormCerrarObs(){
   $('#fCierre').onsubmit = async (e)=>{
     e.preventDefault();
     const id = $('#cierreId').value;
-    const {error} = await sb.from('observaciones').update({estado:'Cerrada', fecha_cierre:$('#cierreFecha').value}).eq('id_obs', id);
+    const {error} = await sb.from('observaciones').update({estado:'Cerrada', fecha_cierre:$('#cierreFecha').value, cerrado_por: ST.session.user.email}).eq('id_obs', id);
     if(error){ formError('cierreMsg','No se pudo guardar: '+error.message); return; }
     formOk('cierreMsg','Observación '+id+' cerrada.');
     await recargarYRefrescar();
@@ -4655,6 +4711,11 @@ function rolApp(){
   return (u && u.app_metadata && u.app_metadata.rol_app) || '';
 }
 function esProponente(){ return rolApp()==='proponente'; }
+function puedeCerrarObs(){
+  const u = ST.session && ST.session.user;
+  return esAdmin() || !!(u && u.app_metadata && u.app_metadata.cierra_obs===true);
+}
+function obsEjecutada(o){ return o.estado==='Abierta' && !!(o.ejecutado_por && String(o.ejecutado_por).trim()); }
 function fechaHora(iso){
   if(!iso) return '—';
   const d = new Date(iso);
@@ -5211,6 +5272,10 @@ function renderTecnicoFamilias(app){
     chip.onclick = ()=>go('tecnico-equipos',{familia:fam});
     grid.appendChild(chip);
   });
+  const chipObs = el('div','kpi-card clickable warn');
+  chipObs.innerHTML = `<div class="fam-name">&nbsp;</div><div class="pct" style="font-size:20px">Observaciones</div><div class="meta">${ST.observaciones.filter(o=>o.estado==='Abierta').length} abiertas</div>`;
+  chipObs.onclick = ()=>go('tecnico-obs');
+  grid.appendChild(chipObs);
   app.appendChild(grid);
 }
 
