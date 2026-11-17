@@ -3055,18 +3055,29 @@ function renderFranjaFamilia(cont, fam){
     nota.querySelector('button').onclick = ()=>{ sel=null; pintar(); };
     res.appendChild(nota);
     if(!lista.length){ res.appendChild(el('div','empty-msg','Ningún equipo en este grupo.')); }
-    const grid = el('div','fam-grid');
-    lista.forEach(a=>{
-      const st = equipoStats(a.tag);
-      const scls = a.estado==='Operativo' ? 'good' : (a.estado==='Parcial' ? 'warn' : 'bad');
-      const chip = el('div','kpi-card clickable '+scls);
-      chip.style.borderLeftWidth='6px';
-      const fl = franja.filtros[a.tag] ? ' · Filtro: '+franja.filtros[a.tag] : '';
-      chip.innerHTML = `<div class="fam-name">${a.tag}</div><div class="pct" style="font-size:21px">${displayName(a)}</div><div class="meta">${a.area||'Sin área'} · ${a.estado}${fl}</div>`;
-      chip.onclick = ()=>go('equipo',{tag:a.tag});
-      grid.appendChild(chip);
-    });
-    res.appendChild(grid);
+    if(lista.length){
+      const tabla = el('table','obs-table fr-res-t');
+      tabla.innerHTML = '<thead><tr><th>Equipo</th><th>Marca</th><th>Modelo</th><th>N° Serie</th><th>Potencia</th><th>Ubicación</th><th>Año</th><th>Observación</th></tr></thead>';
+      const tb = el('tbody');
+      lista.forEach(a=>{
+        const potTxt = a.potencia_kw!=null ? a.potencia_kw+' kW' : (a.capacidad_valor!=null ? a.capacidad_valor+' '+(a.capacidad_unidad||'') : '—');
+        const abiertas = ST.observaciones.filter(o=>o.tag===a.tag && o.estado==='Abierta').map(o=>o.titulo||o.observacion).filter(Boolean);
+        const partes = [];
+        if(sel==='filtro' && franja.filtros[a.tag]) partes.push('Filtro: '+franja.filtros[a.tag]);
+        abiertas.forEach(t=>partes.push(t));
+        if(!partes.length && a.estado!=='Operativo'){
+          const ult = ST.inspecciones.filter(i=>i.tag===a.tag && i.observacion && String(i.observacion).trim() && i.fecha_inspeccion_d)
+            .sort((x,y)=>y.fecha_inspeccion_d-x.fecha_inspeccion_d)[0];
+          partes.push(ult ? ult.observacion : 'Sin observación registrada');
+        }
+        const tr = el('tr','rowlink');
+        tr.innerHTML = '<td>'+escHtml(displayName(a))+'</td><td>'+escHtml(a.marca||'—')+'</td><td>'+escHtml(a.modelo||'—')+'</td><td class="tag-mono">'+escHtml(a.numero_serie||'—')+'</td><td>'+escHtml(potTxt)+'</td><td>'+escHtml(a.ubicacion_especifica||a.area||'—')+'</td><td>'+(a.anio_fabricacion||'—')+'</td><td>'+(partes.length? partes.map(escHtml).join(' · ') : '—')+'</td>';
+        tr.onclick = ()=>go('equipo',{tag:a.tag});
+        tb.appendChild(tr);
+      });
+      tabla.appendChild(tb);
+      res.appendChild(tabla);
+    }
     res.style.display='';
   };
   defs.forEach(d=>{
