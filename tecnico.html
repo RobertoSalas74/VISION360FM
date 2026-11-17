@@ -3595,7 +3595,7 @@ function openFormAltaEquipo(){
     }
     const {error} = await sb.from('activos').insert(nuevo);
     if(error){ formError('altaMsg','No se pudo guardar: '+error.message); return; }
-    formOk('altaMsg','Equipo '+tag+' registrado.');
+    formOk('altaMsg','Equipo '+etiquetaVisible(tag)+' registrado.');
     await recargarYRefrescar();
   };
 }
@@ -4621,7 +4621,7 @@ function renderPreviewStep(dataOverride){
   const plan = planificarImportacion(resultado, ST.activosByTag);
   const tagsNuevosPrev = new Set(plan.nuevos.map(n=>n.tag));
   const inspNuevas = resultadoInsp.filter(i=>tagsNuevosPrev.has(i.tag)).length;
-  const muestra = resultado.slice(0,8).map(r=>`<tr><td class="tag-mono">${r.tag}</td><td>${r.descripcion||''}</td><td>${r.familia}</td><td>${r.estado}</td></tr>`).join('');
+  const muestra = resultado.slice(0,8).map(r=>`<tr><td class="tag-mono">${etiquetaVisible(r.tag)}</td><td>${r.descripcion||''}</td><td>${r.familia}</td><td>${r.estado}</td></tr>`).join('');
   openModal(`
     <div class="modal-head"><h3>Confirmar importación</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
     <div class="field-row"><div class="k">Equipos nuevos (se agregan)</div><div class="v">${plan.nuevos.length}</div></div>
@@ -4733,7 +4733,7 @@ function detallePropuestaHtml(p){
   }
   if(p.tipo==='baja'){
     const a = d.antes || {};
-    return fila('Equipo', p.tag||'—') + fila('Descripción', formatValor(a.descripcion)) + fila('Familia', formatValor(a.familia||p.familia)) + fila('Área', formatValor(a.area)) +
+    return fila('Equipo', p.tag ? etiquetaVisible(p.tag) : '—') + fila('Descripción', formatValor(a.descripcion)) + fila('Familia', formatValor(a.familia||p.familia)) + fila('Área', formatValor(a.area)) +
       '<p style="font-size:12px;color:var(--text-low);margin:8px 0 0">Si el equipo tiene inspecciones, observaciones o alertas registradas, la base no permitirá eliminarlo.</p>';
   }
   if(p.tipo==='importacion'){
@@ -4746,7 +4746,7 @@ function detallePropuestaHtml(p){
     }
     if(cambios.length){
       h += '<div style="font-size:12px;font-weight:600;margin:10px 0 4px">Equipos existentes a actualizar ('+cambios.length+')</div>';
-      h += cambios.slice(0,MAX).map(c=>'<div style="font-size:12.5px;padding:2px 0"><b>'+escHtml(c.tag)+'</b>: '+Object.keys(c.campos||{}).map(k=>escHtml(labelCampo(k))+' '+escHtml(formatValor((c.antes||{})[k]))+' → '+escHtml(formatValor(c.campos[k]))).join('; ')+'</div>').join('');
+      h += cambios.slice(0,MAX).map(c=>'<div style="font-size:12.5px;padding:2px 0"><b>'+escHtml(etiquetaVisible(c.tag))+'</b>: '+Object.keys(c.campos||{}).map(k=>escHtml(labelCampo(k))+' '+escHtml(formatValor((c.antes||{})[k]))+' → '+escHtml(formatValor(c.campos[k]))).join('; ')+'</div>').join('');
       if(cambios.length>MAX) h += '<div style="font-size:12px;color:var(--text-low)">… y '+(cambios.length-MAX)+' más</div>';
     }
     return h || '<div style="font-size:12.5px;color:var(--text-low)">Sin detalle.</div>';
