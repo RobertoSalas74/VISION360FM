@@ -349,6 +349,7 @@
   .fr-card:focus-visible{outline:3px solid #00B0F0;outline-offset:2px;}
   .st-rango{font-size:10px;font-weight:500;color:var(--text-low);text-transform:none;letter-spacing:0;margin-top:2px}
   .ck-sel{min-width:52px;height:28px;border:1px solid #c5cbe0;border-radius:6px;background:#fafbff;font-size:15px;text-align:center;cursor:pointer}.ck-E{color:#2e7d32;font-weight:700}.ck-P{color:#c62828;font-weight:700}.ck-NA{color:#888}
+.ganttt td,.ganttt th{padding:3px 8px;white-space:nowrap}.ganttt td:last-child button{padding:2px 8px;font-size:11px}
 .st-dts{display:flex;flex-wrap:nowrap;gap:0;white-space:nowrap}
   .st-dt{display:inline-flex;flex-direction:column;align-items:center;margin-right:8px;padding:2px 8px;border-radius:10px;background:var(--good-bg,#e4f5ec);color:var(--good);font-weight:700;font-size:13px}
   .st-dt small{font-size:9px;font-weight:500;color:var(--text-low)}
@@ -3207,7 +3208,6 @@ const GANTT_ACTS = {
   umas:{ label:'UMAs', desc:'Alineamiento de poleas, revisión o cambio de fajas y verificación de hermeticidad de la unión de ducto y equipo.' },
   filtros:{ label:'Filtros', desc:'Lavado de serpentines y limpieza de filtros.' }
 };
-const GANTT_DIA = 13;
 async function renderGanttUmas(cont, fam, act){
   act = act || 'umas';
   const puede = puedeEditarChecklist();
@@ -3238,13 +3238,17 @@ async function renderGanttUmas(cont, fam, act){
   let ini = null, fin = null;
   filas.forEach(a=>{ const r=R[a.tag]; const i=dt(r.inicio), f=dt(r.fin); if(!ini||i<ini) ini=i; if(!fin||f>fin) fin=f; });
   if(hoy<ini) ini=hoy; if(hoy>fin) fin=hoy;
-  const n = dias(ini,fin)+1, W = n*GANTT_DIA;
+  const n = dias(ini,fin)+1;
+  const disp = Math.max(panel.clientWidth - 400, 0);
+  const DIA = disp>0 ? Math.max(6, Math.min(16, Math.floor(disp/n))) : 10;
+  const W = n*DIA;
+  const corto = s=>{ const x=dt(s); return String(x.getDate()).padStart(2,'0')+'/'+String(x.getMonth()+1).padStart(2,'0'); };
   const MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   let meses = '', dnum = '';
-  for(let i=0;i<n;){ const d0=new Date(ini.getTime()+i*86400000); let j=i; while(j<n && new Date(ini.getTime()+j*86400000).getMonth()===d0.getMonth()) j++; meses += '<div style="width:'+((j-i)*GANTT_DIA)+'px;border-left:1px solid #2d3a8c;padding-left:4px;overflow:hidden;white-space:nowrap">'+MES[d0.getMonth()]+' '+d0.getFullYear()+'</div>'; i=j; }
-  for(let i=0;i<n;i++){ const d0=new Date(ini.getTime()+i*86400000); const esHoy = d0.getTime()===hoy.getTime(); dnum += '<div style="width:'+GANTT_DIA+'px;text-align:center;font-size:9px;'+(esHoy?'background:#e30613;color:#fff;font-weight:700':'')+'">'+d0.getDate()+'</div>'; }
-  const tabla = el('table','obs-table'); tabla.style.minWidth='0';
-  tabla.innerHTML = '<thead><tr><th>UMA</th><th>Ubicación</th><th>Avance</th><th>Inicio</th><th>Fin</th><th style="padding:0"><div style="width:'+W+'px"><div style="display:flex;font-size:11px">'+meses+'</div><div style="display:flex">'+dnum+'</div></div></th>'+(puede?'<th></th>':'')+'</tr></thead>';
+  for(let i=0;i<n;){ const d0=new Date(ini.getTime()+i*86400000); let j=i; while(j<n && new Date(ini.getTime()+j*86400000).getMonth()===d0.getMonth()) j++; meses += '<div style="width:'+((j-i)*DIA)+'px;border-left:1px solid #2d3a8c;padding-left:4px;overflow:hidden;white-space:nowrap;font-weight:700">'+MES[d0.getMonth()].toUpperCase()+'</div>'; i=j; }
+  for(let i=0;i<n;i++){ const d0=new Date(ini.getTime()+i*86400000); const esHoy = d0.getTime()===hoy.getTime(); const lun = d0.getDay()===1; dnum += '<div style="width:'+DIA+'px;height:14px;line-height:14px;text-align:center;font-size:9px;position:relative;'+(esHoy?'background:#e30613;color:#fff;font-weight:700;border-radius:2px':'')+'">'+((lun||esHoy)?'<span style="position:absolute;left:50%;transform:translateX(-50%)">'+d0.getDate()+'</span>':'')+'</div>'; }
+  const tabla = el('table','obs-table'); tabla.style.minWidth='0'; tabla.className='obs-table ganttt';
+  tabla.innerHTML = '<thead><tr><th>UMA</th><th>Ubic.</th><th>Avance</th><th>Inicio</th><th>Fin</th><th style="padding:0"><div style="width:'+W+'px"><div style="display:flex;font-size:11px">'+meses+'</div><div style="display:flex">'+dnum+'</div></div></th>'+(puede?'<th></th>':'')+'</tr></thead>';
   const tb = el('tbody'); tabla.appendChild(tb);
   const pintar = ()=>{
     tb.innerHTML = '';
@@ -3254,15 +3258,15 @@ async function renderGanttUmas(cont, fam, act){
       const i=dt(r.inicio), f=dt(r.fin);
       const venc = !hecho && f<hoy;
       const color = hecho ? '#2e7d32' : (venc ? '#c62828' : '#3b5bdb');
-      const x0 = dias(ini,i)*GANTT_DIA, w = (dias(i,f)+1)*GANTT_DIA;
-      const xh = dias(ini,hoy)*GANTT_DIA;
-      let barra = '<div style="position:relative;height:22px;width:'+W+'px;background-image:linear-gradient(90deg,#eef0f6 1px,transparent 1px);background-size:'+GANTT_DIA+'px 100%">'
-        + '<div style="position:absolute;left:'+xh+'px;top:0;bottom:0;width:'+GANTT_DIA+'px;background:rgba(227,6,19,.10)"></div>'
-        + '<div style="position:absolute;left:'+x0+'px;top:4px;height:14px;width:'+w+'px;background:'+color+';border-radius:3px;opacity:'+(hecho?1:.85)+'"></div>';
-      if(hecho){ const xe = dias(ini,dt(r.ejecutado_fecha))*GANTT_DIA; barra += '<div title="Ejecutado el '+fmtDate(r.ejecutado_fecha)+'" style="position:absolute;left:'+xe+'px;top:2px;width:'+GANTT_DIA+'px;height:18px;line-height:18px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#1b5e20;border-radius:3px">E</div>'; }
+      const x0 = dias(ini,i)*DIA, w = (dias(i,f)+1)*DIA;
+      const xh = dias(ini,hoy)*DIA;
+      let barra = '<div style="position:relative;height:18px;width:'+W+'px;background-image:linear-gradient(90deg,#eef0f6 1px,transparent 1px);background-size:'+DIA+'px 100%">'
+        + '<div style="position:absolute;left:'+xh+'px;top:0;bottom:0;width:'+DIA+'px;background:rgba(227,6,19,.10)"></div>'
+        + '<div style="position:absolute;left:'+x0+'px;top:3px;height:12px;width:'+w+'px;background:'+color+';border-radius:3px;opacity:'+(hecho?1:.85)+'"></div>';
+      if(hecho){ const xe = dias(ini,dt(r.ejecutado_fecha))*DIA; barra += '<div title="Ejecutado el '+fmtDate(r.ejecutado_fecha)+'" style="position:absolute;left:'+xe+'px;top:2px;width:'+DIA+'px;height:18px;line-height:18px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#1b5e20;border-radius:3px">E</div>'; }
       barra += '</div>';
       const tr = el('tr');
-      tr.innerHTML = '<td><b>'+escHtml(displayName(a))+'</b></td><td>'+escHtml(a.ubicacion_especifica||a.area||'—')+'</td><td><b>'+(hecho?100:0)+'%</b></td><td>'+fmtDate(r.inicio)+'</td><td>'+fmtDate(r.fin)+'</td><td style="padding:2px 0">'+barra+'</td>';
+      tr.innerHTML = '<td style="white-space:nowrap"><b>'+escHtml(displayName(a))+'</b></td><td>'+escHtml(a.ubicacion_especifica||a.area||'—')+'</td><td><b>'+(hecho?100:0)+'%</b></td><td>'+corto(r.inicio)+'</td><td>'+corto(r.fin)+'</td><td style="padding:2px 0">'+barra+'</td>';
       if(puede){ const td = el('td'); const b = el('button','btn','Editar'); b.onclick = ()=>abrirEditarGantt(a, r, act, ()=>pintar()); td.appendChild(b); tr.appendChild(td); }
       tb.appendChild(tr);
     });
