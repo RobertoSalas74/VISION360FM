@@ -1886,6 +1886,25 @@ function renderStatus(app){
   });
   app.appendChild(grid);
 
+  /* Antigüedad general: dentro / fuera de vida útil (solo equipos con año de fabricación) */
+  let vDentro=0, vFuera=0;
+  familiasConDatos.forEach(f=>{ const v=vidaUtilFamiliaStats(f); vDentro += v.dentro+v.proximo; vFuera += v.fuera; });
+  if(vDentro+vFuera>0){
+    const vTot = vDentro+vFuera;
+    const pD = Math.round(vDentro/vTot*1000)/10, pF = Math.round(vFuera/vTot*1000)/10;
+    const vPanel = el('div','panel');
+    vPanel.style.cssText = 'margin-top:16px';
+    vPanel.innerHTML = '<h3 style="margin:0 0 12px">Antigüedad de los equipos</h3>';
+    const fila = el('div'); fila.style.cssText = 'display:flex;align-items:center;gap:28px;flex-wrap:wrap';
+    fila.appendChild(buildDonutMultiColor([{label:'Dentro de vida útil',count:vDentro,color:'#1F9D5B'},{label:'Fuera de vida útil',count:vFuera,color:'#C8102E'}]));
+    const ley = el('div'); ley.style.cssText = 'display:flex;flex-direction:column;gap:10px';
+    ley.innerHTML = `<div><span style="display:inline-block;width:10px;height:10px;background:#1F9D5B;border-radius:2px;margin-right:8px"></span><b style="font-size:22px">${pD.toFixed(1)}%</b> <span style="color:var(--text-mid)">Dentro de vida útil · ${vDentro} equipos</span></div>
+      <div><span style="display:inline-block;width:10px;height:10px;background:#C8102E;border-radius:2px;margin-right:8px"></span><b style="font-size:22px">${pF.toFixed(1)}%</b> <span style="color:var(--text-mid)">Fuera de vida útil · ${vFuera} equipos</span></div>`;
+    fila.appendChild(ley);
+    vPanel.appendChild(fila);
+    app.appendChild(vPanel);
+  }
+
   const obsAbiertas = ST.observaciones.filter(o=>o.estado==='Abierta').length;
   /* Programación de rutinas: oculta por ahora (cambiar a true para volver a mostrarla) */
   const MOSTRAR_PROGRAMACION_INICIO = false;
