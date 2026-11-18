@@ -347,6 +347,11 @@
   .fr-card.good{border-top-color:var(--good);} .fr-card.warn{border-top-color:var(--warn);} .fr-card.bad{border-top-color:var(--bad);} .fr-card.off{border-top-color:var(--text-low);} .fr-card.info{border-top-color:#00B0F0;}
   .fr-card.on{border-color:var(--sodexo-blue);}
   .fr-card:focus-visible{outline:3px solid #00B0F0;outline-offset:2px;}
+  .st-rango{font-size:10px;font-weight:500;color:var(--text-low);text-transform:none;letter-spacing:0;margin-top:2px}
+  .st-dts{display:flex;flex-wrap:nowrap;gap:0;white-space:nowrap}
+  .st-dt{display:inline-flex;flex-direction:column;align-items:center;margin-right:8px;padding:2px 8px;border-radius:10px;background:var(--good-bg,#e4f5ec);color:var(--good);font-weight:700;font-size:13px}
+  .st-dt small{font-size:9px;font-weight:500;color:var(--text-low)}
+  .st-dt.bajo{background:#fdf0d5;color:#a06000}
   .fr-nota{font-size:13px;color:var(--text-mid);margin:0 0 10px;}
   .fr-nota button{all:unset;cursor:pointer;color:var(--sodexo-blue);font-weight:600;text-decoration:underline;}
 </style>
@@ -3124,6 +3129,46 @@ function renderFranjaFamilia(cont, fam, panelWrap){
   cont.appendChild(res);
 }
 
+/* ---------- Status de UMAs: últimas 3 lecturas por equipo (ΔT agua, corriente, aire, filtro) ---------- */
+const DELTA_T_MIN = 2.5; /* ΔT de agua menor a este valor se resalta en ámbar (criterio del acta HVAC) */
+function renderStatusUmas(cont, fam){
+  const eq = equiposCriticos().filter(a=>a.familia===fam).sort((a,b)=>displayName(a).localeCompare(displayName(b),'es',{numeric:true}));
+  const nz = v=>{ if(v===undefined||v===null||String(v).trim()==='') return null; const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?null:n; };
+  const fdm = d=> d ? (String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')) : '';
+  const panel = el('div','panel');
+  const wrap = el('div'); wrap.style.cssText='overflow-x:auto';
+  const tabla = el('table','obs-table');
+  tabla.innerHTML = '<thead><tr><th>UMA</th><th>Ubicación</th><th>Capacidad</th><th>Corriente (medida / placa)<div class="st-rango">hasta la de placa</div></th><th>ΔT agua (últimas 3)<div class="st-rango">mínimo '+DELTA_T_MIN+' °C</div></th><th>T° salida aire</th><th>Estado</th><th>Filtro</th><th>Observación</th></tr></thead>';
+  const tb = el('tbody');
+  eq.forEach(a=>{
+    const rs = ST.inspecciones.filter(i=>i.tag===a.tag && i.fecha_inspeccion_d && !lecturasOffDe(i))
+      .sort((x,y)=>(y.fecha_inspeccion_d-x.fecha_inspeccion_d) || String(y.created_at||'').localeCompare(String(x.created_at||'')));
+    const conAgua = rs.filter(i=>{ const d=i.datos_adicionales||{}; return nz(d.temp_agua_entrada)!==null && nz(d.temp_agua_salida)!==null; }).slice(0,3).reverse();
+    const deltas = conAgua.map(i=>{ const d=i.datos_adicionales; const dt=Math.round((nz(d.temp_agua_salida)-nz(d.temp_agua_entrada))*10)/10; const bajo = dt<DELTA_T_MIN;
+      return '<span class="st-dt'+(bajo?' bajo':'')+'" title="'+fmtDate(i.fecha_inspeccion)+'">'+dt.toFixed(1)+'<small>'+fdm(i.fecha_inspeccion_d)+'</small></span>'; }).join('');
+    const rAmp = rs.find(i=>nz((i.datos_adicionales||{}).amperaje)!==null);
+    const amp = rAmp ? nz(rAmp.datos_adicionales.amperaje) : null;
+    const placa = a.amperaje!=null ? Number(a.amperaje) : null;
+    let corr = '—';
+    if(amp!==null){
+      const pct = placa ? Math.min(100, Math.round(amp/placa*100)) : 0;
+      corr = '<div style="display:flex;align-items:center;gap:6px"><div style="width:64px;height:8px;background:var(--bg-page);border-radius:4px"><div style="width:'+pct+'%;height:8px;background:'+(amp>0?'var(--good)':'var(--bad)')+';border-radius:4px"></div></div><span>'+amp+(placa?' / '+placa:'')+' A</span></div>';
+    }
+    const rAire = rs.find(i=>nz((i.datos_adicionales||{}).descarga_aire)!==null);
+    const aire = rAire ? nz(rAire.datos_adicionales.descarga_aire)+' °C' : '—';
+    const rFil = rs.find(i=>(i.datos_adicionales||{}).estado_filtro);
+    const est = ESTADO_DISPLAY.find(e=>e.db===a.estado) || ESTADO_DISPLAY[0];
+    const obs = ST.observaciones.filter(o=>o.tag===a.tag && o.estado==='Abierta').map(o=>o.titulo||o.observacion).filter(Boolean).join(' · ');
+    const cap = a.capacidad_valor!=null ? a.capacidad_valor+' '+(a.capacidad_unidad||'') : '—';
+    const tr = el('tr','rowlink');
+    tr.innerHTML = '<td><b>'+escHtml(displayName(a))+'</b></td><td>'+escHtml(a.ubicacion_especifica||a.area||'—')+'</td><td>'+escHtml(cap)+'</td><td>'+corr+'</td><td><div class="st-dts">'+(deltas||'—')+'</div></td><td>'+aire+'</td><td><span style="color:'+est.color+';font-weight:600">● '+est.label+'</span></td><td>'+(rFil?escHtml(rFil.datos_adicionales.estado_filtro):'—')+'</td><td>'+(obs?escHtml(obs):'—')+'</td>';
+    tr.onclick = ()=>go('equipo',{tag:a.tag});
+    tb.appendChild(tr);
+  });
+  tabla.appendChild(tb); wrap.appendChild(tabla); panel.appendChild(wrap);
+  cont.appendChild(panel);
+}
+
 function renderObsFamilia(cont, fam){
   const s = familyStats(fam);
   if(s.obsFam.length){
@@ -3210,6 +3255,7 @@ function renderFamiliaAreas(app, familia){
     { id:'actividad', label:'Actividad', render:c=>renderPanelActividad(c, familia) }
   ];
   if(FAMILIAS_VISTA_CORTA.indexOf(familia)!==-1) pest.splice(1,0,{ id:'observaciones', label:'Observaciones', render:c=>renderObsFamilia(c, familia) });
+  if(familia==="UMA's") pest.splice(2,0,{ id:'status', label:'Status', render:c=>renderStatusUmas(c, familia) });
   if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) pest.push({ id:'tendencias', label:'Tendencias', render:c=>renderGraficosFallas(c, familia) });
   renderPestanasFamilia(app, familia, pest);
 
