@@ -1884,9 +1884,13 @@ function renderStatus(app){
   app.appendChild(grid);
 
   const obsAbiertas = ST.observaciones.filter(o=>o.estado==='Abierta').length;
-  const progCont = el('div');
-  app.appendChild(progCont);
-  renderPanelProgramacion(progCont, ST.programacion, { hoy: ST.cutoff });
+  /* Programación de rutinas: oculta por ahora (cambiar a true para volver a mostrarla) */
+  const MOSTRAR_PROGRAMACION_INICIO = false;
+  if(MOSTRAR_PROGRAMACION_INICIO){
+    const progCont = el('div');
+    app.appendChild(progCont);
+    renderPanelProgramacion(progCont, ST.programacion, { hoy: ST.cutoff });
+  }
 
   const totals = el('div','totals-strip');
   totals.innerHTML = `
