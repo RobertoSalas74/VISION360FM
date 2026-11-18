@@ -3259,7 +3259,7 @@ async function renderGanttUmas(cont, fam, act){
       const xh = dias(ini,hoy)*DIA;
       let barra = '<div style="position:relative;height:18px;width:'+W+'px;background-image:linear-gradient(90deg,#eef0f6 1px,transparent 1px);background-size:'+DIA+'px 100%">'
         + '<div style="position:absolute;left:'+xh+'px;top:0;bottom:0;width:'+DIA+'px;background:rgba(227,6,19,.10)"></div>'
-        + '<div style="position:absolute;left:'+x0+'px;top:3px;height:12px;width:'+w+'px;background:'+color+';border-radius:3px;opacity:'+(hecho?1:.85)+'"></div>';
+        + (hecho ? '' : '<div style="position:absolute;left:'+x0+'px;top:3px;height:12px;width:'+w+'px;background:'+color+';border-radius:3px;opacity:.85"></div>');
       if(hecho){ const xe = dias(ini,dt(r.ejecutado_fecha))*DIA; barra += '<div title="Ejecutado el '+fmtDate(r.ejecutado_fecha)+'" style="position:absolute;left:'+xe+'px;top:2px;width:'+DIA+'px;height:18px;line-height:18px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#1b5e20;border-radius:3px">E</div>'; }
       barra += '</div>';
       const tr = el('tr');
@@ -3271,7 +3271,7 @@ async function renderGanttUmas(cont, fam, act){
   };
   wrap.innerHTML=''; wrap.appendChild(tabla); pintar();
   const leyenda = el('div','phint'); leyenda.style.marginTop='8px';
-  leyenda.innerHTML = '<span style="color:#3b5bdb">■</span> programado · <span style="color:#2e7d32">■</span> ejecutado (E = día) · <span style="color:#c62828">■</span> vencido sin ejecutar · <span style="color:#e30613">▌</span> hoy';
+  leyenda.innerHTML = '<span style="color:#3b5bdb">■</span> programado · <span style="color:#2e7d32">■</span> E = ejecutado ese día · <span style="color:#c62828">■</span> vencido sin ejecutar · <span style="color:#e30613">▌</span> hoy';
   panel.appendChild(leyenda);
 }
 function abrirEditarGantt(a, r, act, alGuardar){
