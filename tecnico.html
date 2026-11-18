@@ -3144,7 +3144,7 @@ async function renderChecklistNino(cont, fam){
   const puede = puedeEditarChecklist();
   const panel = el('div','panel');
   const cab = el('div'); cab.style.cssText='display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:8px';
-  const tit = el('div'); tit.innerHTML = '<h3 style="margin:0">Checklist trabajos Fenómeno El Niño</h3><div class="phint" style="margin-top:4px"><b>✓</b> ejecutado · <b>—</b> no aplica · <b>✗</b> pendiente · en blanco cuenta como pendiente. Avance = ejecutados ÷ aplicables.'+(puede?'':' Solo lectura.')+'</div>';
+  const tit = el('div'); tit.innerHTML = '<h3 style="margin:0">Check list UMAs</h3><div class="phint" style="margin-top:4px"><b>✓</b> ejecutado · <b>—</b> no aplica · <b>✗</b> pendiente · en blanco cuenta como pendiente. Avance = ejecutados ÷ aplicables.'+(puede?'':' Solo lectura.')+'</div>';
   const kpi = el('div'); kpi.style.cssText='text-align:right';
   cab.appendChild(tit); cab.appendChild(kpi); panel.appendChild(cab);
   const wrap = el('div'); wrap.style.cssText='overflow-x:auto'; panel.appendChild(wrap);
@@ -3328,7 +3328,7 @@ function renderFamiliaAreas(app, familia){
   ];
   if(FAMILIAS_VISTA_CORTA.indexOf(familia)!==-1) pest.splice(1,0,{ id:'observaciones', label:'Observaciones', render:c=>renderObsFamilia(c, familia) });
   if(familia==="UMA's") pest.splice(2,0,{ id:'status', label:'Status', render:c=>renderStatusUmas(c, familia) });
-  if(familia==="UMA's") pest.splice(3,0,{ id:'checklist', label:'Checklist El Niño', render:c=>renderChecklistNino(c, familia) });
+  if(familia==="UMA's") pest.splice(3,0,{ id:'checklist', label:'Check list UMAs', render:c=>renderChecklistNino(c, familia) });
   if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) pest.push({ id:'tendencias', label:'Tendencias', render:c=>renderGraficosFallas(c, familia) });
   renderPestanasFamilia(app, familia, pest);
 
