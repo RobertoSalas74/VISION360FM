@@ -1897,7 +1897,9 @@ function renderStatus(app){
     <div class="total-box"><div class="v">${obsAbiertas}</div><div class="l">Observaciones abiertas</div></div>
     <div class="total-box"><div class="v">${fmtMoney(gastoTotal)}</div><div class="l">Gasto acumulado</div></div>
   `;
-  if(obsAbiertas>0 || gastoTotal>0) app.appendChild(totals);
+  /* Totales (observaciones abiertas y gasto acumulado): ocultos por ahora */
+  const MOSTRAR_TOTALES_INICIO = false;
+  if(MOSTRAR_TOTALES_INICIO && (obsAbiertas>0 || gastoTotal>0)) app.appendChild(totals);
   if(!familiasConDatos.length){
     app.appendChild(el('div','empty-msg','Todavía no hay equipos cargados. '+(ST.session? 'Usa "Alta de equipo" para comenzar.':'')));
   }
