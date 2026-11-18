@@ -3038,9 +3038,9 @@ function renderGraficosFallas(app, fam){
 }
 
 /* ---------------- Franja de estado por familia (vista tipo tablero) ---------------- */
-const FAMILIAS_FRANJA = ["UMA's"];
+const FAMILIAS_FRANJA = ["Chiller","Compactos","UMA's","Compresores","Torres de Enfriamiento"];
 /* Vista corta (cifras arriba a la derecha, pestaña Observaciones, sin gasto ni tarjetas de equipos) */
-const FAMILIAS_VISTA_CORTA = ["UMA's","Torres de Enfriamiento"];
+const FAMILIAS_VISTA_CORTA = ["Chiller","Compactos","UMA's","Compresores","Torres de Enfriamiento"];
 function filtroConProblemaDe(fam, tag){
   const cfg = familyFieldConfig(fam);
   const f = (cfg.fields||[]).find(x=>x.key==='estado_filtro');
@@ -3055,7 +3055,7 @@ function filtroConProblemaDe(fam, tag){
 function franjaEstadoFamilia(fam){
   const eq = equiposCriticos().filter(a=>a.familia===fam);
   const cfg = familyFieldConfig(fam);
-  const conFiltro = !!(cfg.fields||[]).find(x=>x.key==='estado_filtro');
+  const conFiltro = fam==="UMA's" && !!(cfg.fields||[]).find(x=>x.key==='estado_filtro'); /* tarjeta de filtro solo en UMAs por ahora */
   const grupos = {}; ESTADO_DISPLAY.forEach(e=>grupos[e.db]=[]);
   eq.forEach(a=>{ (grupos[a.estado] || grupos['Operativo']).push(a); });
   const filtros = {};
