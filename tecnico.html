@@ -3203,6 +3203,98 @@ async function renderChecklistNino(cont, fam){
   });
   wrap.innerHTML=''; wrap.appendChild(tabla); pintarKpi();
 }
+const GANTT_ACTS = {
+  umas:{ label:'UMAs', desc:'Alineamiento de poleas, revisión o cambio de fajas y verificación de hermeticidad de la unión de ducto y equipo.' },
+  filtros:{ label:'Filtros', desc:'Lavado de serpentines y limpieza de filtros.' }
+};
+const GANTT_DIA = 13;
+async function renderGanttUmas(cont, fam, act){
+  act = act || 'umas';
+  const puede = puedeEditarChecklist();
+  const eq = equiposCriticos().filter(a=>a.familia===fam);
+  const panel = el('div','panel'); cont.appendChild(panel);
+  const cab = el('div'); cab.style.cssText='display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px';
+  const izq = el('div');
+  const sel = el('div'); sel.style.cssText='display:flex;gap:8px;margin-bottom:6px';
+  Object.keys(GANTT_ACTS).forEach(k=>{
+    const b = el('button','btn'+(k===act?' primary':''),GANTT_ACTS[k].label);
+    b.onclick = ()=>{ cont.innerHTML=''; renderGanttUmas(cont, fam, k); };
+    sel.appendChild(b);
+  });
+  izq.appendChild(sel);
+  const d = el('div','phint'); d.textContent = GANTT_ACTS[act].desc; izq.appendChild(d);
+  const kpi = el('div'); kpi.style.cssText='text-align:right';
+  cab.appendChild(izq); cab.appendChild(kpi); panel.appendChild(cab);
+  const wrap = el('div'); wrap.style.cssText='overflow-x:auto'; panel.appendChild(wrap);
+  const msg = el('div','phint'); msg.textContent='Cargando…'; wrap.appendChild(msg);
+  const {data, error} = await sb.from('gantt_umas').select('tag,inicio,fin,ejecutado_fecha').eq('actividad', act);
+  if(error){ msg.textContent='No se pudo cargar el Gantt: '+error.message; return; }
+  const R = {}; (data||[]).forEach(r=>{ R[r.tag]=r; });
+  const filas = eq.filter(a=>R[a.tag]).sort((a,b)=>displayName(a).localeCompare(displayName(b),'es',{numeric:true}));
+  if(!filas.length){ msg.textContent='Sin actividades programadas.'; return; }
+  const dt = s=>new Date(s+'T00:00:00');
+  const dias = (a,b)=>Math.round((b-a)/86400000);
+  const hoy = todayLocal();
+  let ini = null, fin = null;
+  filas.forEach(a=>{ const r=R[a.tag]; const i=dt(r.inicio), f=dt(r.fin); if(!ini||i<ini) ini=i; if(!fin||f>fin) fin=f; });
+  if(hoy<ini) ini=hoy; if(hoy>fin) fin=hoy;
+  const n = dias(ini,fin)+1, W = n*GANTT_DIA;
+  const MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  let meses = '', dnum = '';
+  for(let i=0;i<n;){ const d0=new Date(ini.getTime()+i*86400000); let j=i; while(j<n && new Date(ini.getTime()+j*86400000).getMonth()===d0.getMonth()) j++; meses += '<div style="width:'+((j-i)*GANTT_DIA)+'px;border-left:1px solid #2d3a8c;padding-left:4px;overflow:hidden;white-space:nowrap">'+MES[d0.getMonth()]+' '+d0.getFullYear()+'</div>'; i=j; }
+  for(let i=0;i<n;i++){ const d0=new Date(ini.getTime()+i*86400000); const esHoy = d0.getTime()===hoy.getTime(); dnum += '<div style="width:'+GANTT_DIA+'px;text-align:center;font-size:9px;'+(esHoy?'background:#e30613;color:#fff;font-weight:700':'')+'">'+d0.getDate()+'</div>'; }
+  const tabla = el('table','obs-table'); tabla.style.minWidth='0';
+  tabla.innerHTML = '<thead><tr><th>UMA</th><th>Ubicación</th><th>Avance</th><th>Inicio</th><th>Fin</th><th style="padding:0"><div style="width:'+W+'px"><div style="display:flex;font-size:11px">'+meses+'</div><div style="display:flex">'+dnum+'</div></div></th>'+(puede?'<th></th>':'')+'</tr></thead>';
+  const tb = el('tbody'); tabla.appendChild(tb);
+  const pintar = ()=>{
+    tb.innerHTML = '';
+    let ej = 0;
+    filas.forEach(a=>{
+      const r = R[a.tag]; const hecho = !!r.ejecutado_fecha; if(hecho) ej++;
+      const i=dt(r.inicio), f=dt(r.fin);
+      const venc = !hecho && f<hoy;
+      const color = hecho ? '#2e7d32' : (venc ? '#c62828' : '#3b5bdb');
+      const x0 = dias(ini,i)*GANTT_DIA, w = (dias(i,f)+1)*GANTT_DIA;
+      const xh = dias(ini,hoy)*GANTT_DIA;
+      let barra = '<div style="position:relative;height:22px;width:'+W+'px;background-image:linear-gradient(90deg,#eef0f6 1px,transparent 1px);background-size:'+GANTT_DIA+'px 100%">'
+        + '<div style="position:absolute;left:'+xh+'px;top:0;bottom:0;width:'+GANTT_DIA+'px;background:rgba(227,6,19,.10)"></div>'
+        + '<div style="position:absolute;left:'+x0+'px;top:4px;height:14px;width:'+w+'px;background:'+color+';border-radius:3px;opacity:'+(hecho?1:.85)+'"></div>';
+      if(hecho){ const xe = dias(ini,dt(r.ejecutado_fecha))*GANTT_DIA; barra += '<div title="Ejecutado el '+fmtDate(r.ejecutado_fecha)+'" style="position:absolute;left:'+xe+'px;top:2px;width:'+GANTT_DIA+'px;height:18px;line-height:18px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#1b5e20;border-radius:3px">E</div>'; }
+      barra += '</div>';
+      const tr = el('tr');
+      tr.innerHTML = '<td><b>'+escHtml(displayName(a))+'</b></td><td>'+escHtml(a.ubicacion_especifica||a.area||'—')+'</td><td><b>'+(hecho?100:0)+'%</b></td><td>'+fmtDate(r.inicio)+'</td><td>'+fmtDate(r.fin)+'</td><td style="padding:2px 0">'+barra+'</td>';
+      if(puede){ const td = el('td'); const b = el('button','btn','Editar'); b.onclick = ()=>abrirEditarGantt(a, r, act, ()=>pintar()); td.appendChild(b); tr.appendChild(td); }
+      tb.appendChild(tr);
+    });
+    kpi.innerHTML = '<div style="font-size:26px;font-weight:700;color:#1B2568">'+Math.round(ej/filas.length*100)+'%</div><div class="phint">'+ej+' de '+filas.length+' ejecutadas</div>';
+  };
+  wrap.innerHTML=''; wrap.appendChild(tabla); pintar();
+  const leyenda = el('div','phint'); leyenda.style.marginTop='8px';
+  leyenda.innerHTML = '<span style="color:#3b5bdb">■</span> programado · <span style="color:#2e7d32">■</span> ejecutado (E = día) · <span style="color:#c62828">■</span> vencido sin ejecutar · <span style="color:#e30613">▌</span> hoy';
+  panel.appendChild(leyenda);
+}
+function abrirEditarGantt(a, r, act, alGuardar){
+  openModal(`
+    <div class="modal-head"><h3>${escHtml(displayName(a))} · ${escHtml(GANTT_ACTS[act].label)}</h3><button class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">✕</button></div>
+    <form class="form-grid" id="fGantt">
+      <div class="full"><label>Inicio</label><input type="date" id="gaIni" value="${escHtml(r.inicio)}" required></div>
+      <div class="full"><label>Fin</label><input type="date" id="gaFin" value="${escHtml(r.fin)}" required></div>
+      <div class="full"><label>Fecha de ejecución (vacío = sin ejecutar)</label><input type="date" id="gaEj" value="${escHtml(r.ejecutado_fecha||'')}"></div>
+      <div class="form-msg hidden" id="gaMsg"></div>
+      <div class="form-actions"><button type="button" class="btn ghost" style="color:var(--text-mid);border-color:var(--line)" onclick="window.__closeModal()">Cancelar</button>
+        <button type="submit" class="btn primary">Guardar</button></div>
+    </form>
+  `);
+  $('#fGantt').onsubmit = async (e)=>{
+    e.preventDefault();
+    const i=$('#gaIni').value, f=$('#gaFin').value, ej=$('#gaEj').value||null;
+    if(f<i){ formError('gaMsg','El fin no puede ser anterior al inicio.'); return; }
+    const {error} = await sb.from('gantt_umas').update({inicio:i,fin:f,ejecutado_fecha:ej,actualizado_por:ST.session.user.email,updated_at:new Date().toISOString()}).eq('tag',a.tag).eq('actividad',act);
+    if(error){ formError('gaMsg','No se pudo guardar: '+error.message); return; }
+    r.inicio=i; r.fin=f; r.ejecutado_fecha=ej;
+    window.__closeModal(); alGuardar();
+  };
+}
 function renderStatusUmas(cont, fam){
   const eq = equiposCriticos().filter(a=>a.familia===fam).sort((a,b)=>displayName(a).localeCompare(displayName(b),'es',{numeric:true}));
   const nz = v=>{ if(v===undefined||v===null||String(v).trim()==='') return null; const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?null:n; };
@@ -3329,6 +3421,7 @@ function renderFamiliaAreas(app, familia){
   if(FAMILIAS_VISTA_CORTA.indexOf(familia)!==-1) pest.splice(1,0,{ id:'observaciones', label:'Observaciones', render:c=>renderObsFamilia(c, familia) });
   if(familia==="UMA's") pest.splice(2,0,{ id:'status', label:'Status', render:c=>renderStatusUmas(c, familia) });
   if(familia==="UMA's") pest.splice(3,0,{ id:'checklist', label:'Check list UMAs', render:c=>renderChecklistNino(c, familia) });
+  if(familia==="UMA's") pest.splice(4,0,{ id:'gantt', label:'Gantt', render:c=>renderGanttUmas(c, familia) });
   if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) pest.push({ id:'tendencias', label:'Tendencias', render:c=>renderGraficosFallas(c, familia) });
   renderPestanasFamilia(app, familia, pest);
 
