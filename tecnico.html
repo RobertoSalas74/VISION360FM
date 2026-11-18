@@ -1877,7 +1877,10 @@ function renderStatus(app){
     totalEq += s.total; gastoTotal += s.gasto;
     const cls = semaforoClass(s.disp);
     const card = el('div','kpi-card clickable '+cls);
-    card.innerHTML = `<div class="fam-name">${fam}</div><div class="pct">${fmtPct(s.disp)}</div><div class="meta">${s.operativos} de ${s.total} operativos</div>`;
+    const colCard = cls==='good'?'--good':(cls==='warn'?'--warn':'--bad');
+    card.innerHTML = `<div class="fam-name" style="font-size:15px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--text-high,#1a1a2e);margin-bottom:8px">${fam}</div>
+      <div style="border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:10px"><div style="font-size:11px;color:var(--text-low)">Disponibilidad</div><div style="font-size:26px;font-weight:700;color:var(${colCard})">${fmtPct(s.disp)}</div></div>
+      <div style="font-size:11px;color:var(--text-low)">Inventario</div><div style="font-size:20px;font-weight:700">${s.total}</div>`;
     card.tabIndex=0;
     const destino = FAMILIAS_POR_AREA.indexOf(fam)!==-1 ? ()=>go('familia-areas',{familia:fam}) : ()=>go('family',{family:fam});
     card.onclick = destino;
