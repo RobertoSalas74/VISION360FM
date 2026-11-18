@@ -662,7 +662,7 @@ function parseDate(s){ return s? new Date(s+'T00:00:00') : null; }
 function monthLabel(m){ const N=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']; return N[m]; }
 function displayName(act){ return (act.nombre_corto && act.nombre_corto.trim()) ? act.nombre_corto.trim() : act.tag; }
 /* El código interno (UMA-129…) de las UMAs es solo de trazabilidad: no se muestra */
-function etiquetaVisible(tag){ const a = ST.activosByTag && ST.activosByTag.get(tag); return (a && a.familia==="UMA's") ? displayName(a) : tag; }
+function etiquetaVisible(tag){ const a = ST.activosByTag && ST.activosByTag.get(tag); return (a && (a.familia==="UMA's" || a.familia==="Torres de Enfriamiento")) ? displayName(a) : tag; }
 
 /* =========================================================
    CARGA DE DATOS
