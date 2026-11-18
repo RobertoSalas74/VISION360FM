@@ -3144,7 +3144,7 @@ async function renderChecklistNino(cont, fam){
   const puede = puedeEditarChecklist();
   const panel = el('div','panel');
   const cab = el('div'); cab.style.cssText='display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:8px';
-  const tit = el('div'); tit.innerHTML = '<h3 style="margin:0">Check list UMAs</h3><div class="phint" style="margin-top:4px"><b>✓</b> ejecutado · <b>—</b> no aplica · <b>✗</b> pendiente · en blanco cuenta como pendiente. Avance = ejecutados ÷ aplicables.'+(puede?'':' Solo lectura.')+'</div>';
+  const tit = el('div'); tit.innerHTML = '<h3 style="margin:0">Check list UMAs</h3><div class="phint" style="margin-top:4px"><b>✓</b> ejecutado · <b>—</b> no aplica · <b>✗</b> pendiente'+(puede?'':' Solo lectura.')+'</div>';
   const kpi = el('div'); kpi.style.cssText='text-align:right';
   cab.appendChild(tit); cab.appendChild(kpi); panel.appendChild(cab);
   const wrap = el('div'); wrap.style.cssText='overflow-x:auto'; panel.appendChild(wrap);
