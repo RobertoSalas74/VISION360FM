@@ -348,7 +348,8 @@
   .fr-card.on{border-color:var(--sodexo-blue);}
   .fr-card:focus-visible{outline:3px solid #00B0F0;outline-offset:2px;}
   .st-rango{font-size:10px;font-weight:500;color:var(--text-low);text-transform:none;letter-spacing:0;margin-top:2px}
-  .st-dts{display:flex;flex-wrap:nowrap;gap:0;white-space:nowrap}
+  .ck-sel{min-width:52px;height:28px;border:1px solid #c5cbe0;border-radius:6px;background:#fafbff;font-size:15px;text-align:center;cursor:pointer}.ck-E{color:#2e7d32;font-weight:700}.ck-P{color:#c62828;font-weight:700}.ck-NA{color:#888}
+.st-dts{display:flex;flex-wrap:nowrap;gap:0;white-space:nowrap}
   .st-dt{display:inline-flex;flex-direction:column;align-items:center;margin-right:8px;padding:2px 8px;border-radius:10px;background:var(--good-bg,#e4f5ec);color:var(--good);font-weight:700;font-size:13px}
   .st-dt small{font-size:9px;font-weight:500;color:var(--text-low)}
   .st-dt.bajo{background:#fdf0d5;color:#a06000}
@@ -3131,6 +3132,77 @@ function renderFranjaFamilia(cont, fam, panelWrap){
 
 /* ---------- Status de UMAs: últimas 3 lecturas por equipo (ΔT agua, corriente, aire, filtro) ---------- */
 const DELTA_T_MIN = 2.5; /* ΔT de agua menor a este valor se resalta en ámbar (criterio del acta HVAC) */
+const CK_ITEMS = [
+  {k:'filtro',l:'Cambio de filtro'},{k:'poleas',l:'Alineamiento de poleas'},{k:'alin_fajas',l:'Alineamiento de fajas'},
+  {k:'cambio_fajas',l:'Cambio de fajas'},{k:'serpentin',l:'Cambio de serpentín'},
+  {k:'manometro',l:'Manómetro',g:'Componentes de monitoreo'},{k:'flujo',l:'Sensor de flujo',g:'Componentes de monitoreo'},{k:'termostato',l:'Termostato',g:'Componentes de monitoreo'},
+  {k:'electricos',l:'Componentes eléctricos'}
+];
+function puedeEditarChecklist(){ return esAdmin() || rolApp()==='proponente'; }
+async function renderChecklistNino(cont, fam){
+  const eq = equiposCriticos().filter(a=>a.familia===fam).sort((a,b)=>displayName(a).localeCompare(displayName(b),'es',{numeric:true}));
+  const puede = puedeEditarChecklist();
+  const panel = el('div','panel');
+  const cab = el('div'); cab.style.cssText='display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:8px';
+  const tit = el('div'); tit.innerHTML = '<h3 style="margin:0">Checklist trabajos Fenómeno El Niño</h3><div class="phint" style="margin-top:4px"><b>✓</b> ejecutado · <b>—</b> no aplica · <b>✗</b> pendiente · en blanco cuenta como pendiente. Avance = ejecutados ÷ aplicables.'+(puede?'':' Solo lectura.')+'</div>';
+  const kpi = el('div'); kpi.style.cssText='text-align:right';
+  cab.appendChild(tit); cab.appendChild(kpi); panel.appendChild(cab);
+  const wrap = el('div'); wrap.style.cssText='overflow-x:auto'; panel.appendChild(wrap);
+  cont.appendChild(panel);
+  const msg = el('div','phint'); msg.textContent='Cargando…'; wrap.appendChild(msg);
+  const {data, error} = await sb.from('checklist_nino').select('tag,item,estado');
+  if(error){ msg.textContent='No se pudo cargar el checklist: '+error.message; return; }
+  const M = {}; (data||[]).forEach(r=>{ M[r.tag+'|'+r.item]=r.estado; });
+  const avanceDe = tag=>{ let ap=0, ej=0; CK_ITEMS.forEach(it=>{ const v=M[tag+'|'+it.k]; if(v==='NA') return; ap++; if(v==='E') ej++; }); return {ap, ej, pc: ap? Math.round(ej/ap*100) : 0}; };
+  const tabla = el('table','obs-table');
+  const grupos = []; CK_ITEMS.forEach(it=>{ if(it.g){ const u=grupos[grupos.length-1]; if(u && u.g===it.g) u.n++; else grupos.push({g:it.g,n:1}); } });
+  let h1 = '<tr><th rowspan="2">UMA</th>';
+  let g0 = false;
+  CK_ITEMS.forEach(it=>{
+    if(!it.g) h1 += '<th rowspan="2" style="text-align:center">'+it.l+'</th>';
+    else if(!g0){ g0=true; h1 += '<th colspan="'+grupos[0].n+'" style="text-align:center">'+it.g+'</th>'; }
+  });
+  h1 += '<th rowspan="2">Avance</th></tr><tr>'+CK_ITEMS.filter(i=>i.g).map(i=>'<th style="text-align:center">'+i.l+'</th>').join('')+'</tr>';
+  tabla.innerHTML = '<thead>'+h1+'</thead>';
+  const tb = el('tbody'); tabla.appendChild(tb);
+  const avCeldas = {};
+  const pintarKpi = ()=>{
+    let ap=0, ej=0; eq.forEach(a=>{ const r=avanceDe(a.tag); ap+=r.ap; ej+=r.ej; });
+    kpi.innerHTML = '<div style="font-size:26px;font-weight:700;color:#1B2568">'+(ap?Math.round(ej/ap*100):0)+'%</div><div class="phint">avance general</div>';
+  };
+  const pintarAv = tag=>{ const r=avanceDe(tag); avCeldas[tag].innerHTML = '<b>'+r.pc+'%</b> <span class="phint">'+r.ej+'/'+r.ap+'</span>'; };
+  eq.forEach(a=>{
+    const tr = el('tr');
+    const td0 = el('td'); td0.innerHTML = '<b>'+escHtml(displayName(a))+'</b>'; tr.appendChild(td0);
+    CK_ITEMS.forEach(it=>{
+      const td = el('td'); td.style.textAlign='center';
+      const v = M[a.tag+'|'+it.k] || '';
+      if(puede){
+        const se = document.createElement('select'); se.className='ck-sel';
+        [['',''],['E','✓'],['NA','—'],['P','✗']].forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; se.appendChild(op); });
+        se.value = v; se.dataset.v = v;
+        se.onchange = async ()=>{
+          const nv = se.value, ant = se.dataset.v; se.disabled = true;
+          let err;
+          if(nv===''){ ({error:err} = await sb.from('checklist_nino').delete().eq('tag',a.tag).eq('item',it.k)); }
+          else { ({error:err} = await sb.from('checklist_nino').upsert({tag:a.tag,item:it.k,estado:nv,actualizado_por:ST.session.user.email,updated_at:new Date().toISOString()})); }
+          se.disabled = false;
+          if(err){ se.value = ant; alert('No se pudo guardar: '+err.message); return; }
+          se.dataset.v = nv; if(nv==='') delete M[a.tag+'|'+it.k]; else M[a.tag+'|'+it.k]=nv;
+          se.className = 'ck-sel ck-'+(nv||'b'); pintarAv(a.tag); pintarKpi();
+        };
+        se.className = 'ck-sel ck-'+(v||'b');
+        td.appendChild(se);
+      } else {
+        td.innerHTML = v==='E' ? '<b style="color:#2e7d32">✓</b>' : v==='NA' ? '<span style="color:#999">—</span>' : v==='P' ? '<b style="color:#c62828">✗</b>' : '';
+      }
+      tr.appendChild(td);
+    });
+    const tdA = el('td'); avCeldas[a.tag]=tdA; tr.appendChild(tdA); pintarAv(a.tag);
+    tb.appendChild(tr);
+  });
+  wrap.innerHTML=''; wrap.appendChild(tabla); pintarKpi();
+}
 function renderStatusUmas(cont, fam){
   const eq = equiposCriticos().filter(a=>a.familia===fam).sort((a,b)=>displayName(a).localeCompare(displayName(b),'es',{numeric:true}));
   const nz = v=>{ if(v===undefined||v===null||String(v).trim()==='') return null; const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?null:n; };
@@ -3256,6 +3328,7 @@ function renderFamiliaAreas(app, familia){
   ];
   if(FAMILIAS_VISTA_CORTA.indexOf(familia)!==-1) pest.splice(1,0,{ id:'observaciones', label:'Observaciones', render:c=>renderObsFamilia(c, familia) });
   if(familia==="UMA's") pest.splice(2,0,{ id:'status', label:'Status', render:c=>renderStatusUmas(c, familia) });
+  if(familia==="UMA's") pest.splice(3,0,{ id:'checklist', label:'Checklist El Niño', render:c=>renderChecklistNino(c, familia) });
   if(GRAFICOS_FALLAS_FAMILIAS.indexOf(familia)!==-1) pest.push({ id:'tendencias', label:'Tendencias', render:c=>renderGraficosFallas(c, familia) });
   renderPestanasFamilia(app, familia, pest);
 
